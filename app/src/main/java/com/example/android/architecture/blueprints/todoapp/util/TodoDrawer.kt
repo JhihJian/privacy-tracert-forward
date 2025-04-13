@@ -66,6 +66,7 @@ fun AppModalDrawer(
                 currentRoute = currentRoute,
                 navigateToTasks = { navigationActions.navigateToTasks() },
                 navigateToStatistics = { navigationActions.navigateToStatistics() },
+                navigateToLocation = { navigationActions.navigateToLocation() },
                 closeDrawer = { coroutineScope.launch { drawerState.close() } }
             )
         }
@@ -79,6 +80,7 @@ private fun AppDrawer(
     currentRoute: String,
     navigateToTasks: () -> Unit,
     navigateToStatistics: () -> Unit,
+    navigateToLocation: () -> Unit,
     closeDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -100,6 +102,15 @@ private fun AppDrawer(
                 isSelected = currentRoute == TodoDestinations.STATISTICS_ROUTE,
                 action = {
                     navigateToStatistics()
+                    closeDrawer()
+                }
+            )
+            DrawerButton(
+                painter = painterResource(id = R.drawable.ic_location),
+                label = "实时定位",
+                isSelected = currentRoute == TodoDestinations.LOCATION_ROUTE,
+                action = {
+                    navigateToLocation()
                     closeDrawer()
                 }
             )
@@ -182,6 +193,7 @@ fun PreviewAppDrawer() {
                 currentRoute = TodoDestinations.TASKS_ROUTE,
                 navigateToTasks = {},
                 navigateToStatistics = {},
+                navigateToLocation = {},
                 closeDrawer = {}
             )
         }

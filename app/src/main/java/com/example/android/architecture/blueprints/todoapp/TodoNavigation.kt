@@ -22,6 +22,7 @@ import com.example.android.architecture.blueprints.todoapp.TodoDestinationsArgs.
 import com.example.android.architecture.blueprints.todoapp.TodoDestinationsArgs.TITLE_ARG
 import com.example.android.architecture.blueprints.todoapp.TodoDestinationsArgs.USER_MESSAGE_ARG
 import com.example.android.architecture.blueprints.todoapp.TodoScreens.ADD_EDIT_TASK_SCREEN
+import com.example.android.architecture.blueprints.todoapp.TodoScreens.LOCATION_SCREEN
 import com.example.android.architecture.blueprints.todoapp.TodoScreens.STATISTICS_SCREEN
 import com.example.android.architecture.blueprints.todoapp.TodoScreens.TASKS_SCREEN
 import com.example.android.architecture.blueprints.todoapp.TodoScreens.TASK_DETAIL_SCREEN
@@ -34,6 +35,7 @@ private object TodoScreens {
     const val STATISTICS_SCREEN = "statistics"
     const val TASK_DETAIL_SCREEN = "task"
     const val ADD_EDIT_TASK_SCREEN = "addEditTask"
+    const val LOCATION_SCREEN = "location"
 }
 
 /**
@@ -53,6 +55,7 @@ object TodoDestinations {
     const val STATISTICS_ROUTE = STATISTICS_SCREEN
     const val TASK_DETAIL_ROUTE = "$TASK_DETAIL_SCREEN/{$TASK_ID_ARG}"
     const val ADD_EDIT_TASK_ROUTE = "$ADD_EDIT_TASK_SCREEN/{$TITLE_ARG}?$TASK_ID_ARG={$TASK_ID_ARG}"
+    const val LOCATION_ROUTE = LOCATION_SCREEN
 }
 
 /**
@@ -78,6 +81,22 @@ class TodoNavigationActions(private val navController: NavHostController) {
 
     fun navigateToStatistics() {
         navController.navigate(TodoDestinations.STATISTICS_ROUTE) {
+            // Pop up to the start destination of the graph to
+            // avoid building up a large stack of destinations
+            // on the back stack as users select items
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            // Avoid multiple copies of the same destination when
+            // reselecting the same item
+            launchSingleTop = true
+            // Restore state when reselecting a previously selected item
+            restoreState = true
+        }
+    }
+    
+    fun navigateToLocation() {
+        navController.navigate(TodoDestinations.LOCATION_ROUTE) {
             // Pop up to the start destination of the graph to
             // avoid building up a large stack of destinations
             // on the back stack as users select items
