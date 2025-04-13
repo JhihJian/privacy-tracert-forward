@@ -284,7 +284,7 @@ private fun LocationContent(
                     
                     // 添加刷新按钮
                     Button(
-                        onClick = { onPermissionResult(false) },
+                        onClick = { onStartLocation() },
                         modifier = Modifier.padding(bottom = 16.dp)
                     ) {
                         Icon(

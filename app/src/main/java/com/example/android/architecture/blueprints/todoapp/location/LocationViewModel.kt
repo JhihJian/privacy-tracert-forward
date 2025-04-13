@@ -177,19 +177,101 @@ class LocationViewModel @Inject constructor(
     /**
      * 更新位置信息
      */
-    fun updateLocation(location: AMapLocation) {
-        viewModelScope.launch {
-            val locationJson = LocationUtils.locationToJson(location)
+    private fun updateLocation(location: AMapLocation) {
+        // 将位置数据转换为JSON格式
+        val locationJson = formatLocationToJson(location)
+        
+        // 更新UI状态
+        _uiState.update { currentState ->
+            currentState.copy(
+                currentLocation = location,
+                isLoading = true,
+                message = "定位成功: ${location.address}",
+                locationJson = locationJson,
+                error = null
+            )
+        }
+    }
+    
+    /**
+     * 将位置数据格式化为JSON字符串
+     */
+    private fun formatLocationToJson(location: AMapLocation): String {
+        return try {
+            val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+            val formattedDate = dateFormat.format(java.util.Date(location.time))
             
-            _uiState.update { currentState ->
-                currentState.copy(
-                    currentLocation = location,
-                    locationJson = locationJson,
-                    isLoading = false,
-                    error = null,
-                    message = if (location.errorCode == 0) "定位成功" else "定位失败: ${location.errorInfo}"
-                )
+            // 构建包含所有必要信息的JSON对象
+            """
+            {
+              "基本信息": {
+                "定位类型": ${location.locationType},
+                "定位类型描述": "${getLocationTypeDesc(location.locationType)}",
+                "纬度": ${location.latitude},
+                "经度": ${location.longitude},
+                "精度(米)": ${location.accuracy},
+                "获取时间": "$formattedDate",
+                "海拔高度": ${location.altitude},
+                "速度(米/秒)": ${location.speed},
+                "角度": ${location.bearing},
+                "GPS状态": "${getGpsStatusDesc(location.gpsAccuracyStatus)}"
+              },
+              "地址信息": {
+                "地址": "${location.address ?: ""}",
+                "国家": "${location.country ?: ""}",
+                "省份": "${location.province ?: ""}",
+                "城市": "${location.city ?: ""}",
+                "区县": "${location.district ?: ""}",
+                "街道": "${location.street ?: ""}",
+                "门牌号": "${location.streetNum ?: ""}",
+                "城市编码": "${location.cityCode ?: ""}",
+                "区域编码": "${location.adCode ?: ""}",
+                "POI名称": "${location.poiName ?: ""}",
+                "AOI名称": "${location.aoiName ?: ""}",
+                "建筑物ID": "${location.buildingId ?: ""}",
+                "楼层": "${location.floor ?: ""}"
+              },
+              "其他信息": {
+                "错误码": ${location.errorCode},
+                "错误信息": "${location.errorInfo ?: ""}",
+                "坐标系类型": "${location.coordType ?: ""}",
+                "定位SDK版本": "${location.locationDetail ?: ""}"
+              }
             }
+            """.trimIndent()
+        } catch (e: Exception) {
+            Log.e(TAG, "格式化位置数据失败", e)
+            """{"错误": "格式化位置数据失败: ${e.message}"}"""
+        }
+    }
+    
+    /**
+     * 获取定位类型描述
+     */
+    private fun getLocationTypeDesc(locationType: Int): String {
+        return when (locationType) {
+            1 -> "GPS定位"
+            2 -> "前次定位"
+            4 -> "缓存定位"
+            5 -> "Wifi定位"
+            6 -> "基站定位"
+            8 -> "离线定位"
+            9 -> "最后位置缓存"
+            else -> "未知定位类型"
+        }
+    }
+    
+    /**
+     * 获取GPS状态描述
+     */
+    private fun getGpsStatusDesc(gpsStatus: Int): String {
+        return when (gpsStatus) {
+            0 -> "GPS质量未知"
+            1 -> "GPS质量好"
+            2 -> "GPS质量中等"
+            3 -> "GPS质量差"
+            4 -> "GPS质量极差"
+            else -> "GPS未开启"
         }
     }
     
