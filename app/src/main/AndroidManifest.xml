@@ -53,6 +53,11 @@
             android:name="com.amap.api.v2.apikey"
             android:value="替换为您实际的高德地图Key" />
         
+        <!-- 配置位置上传服务器URL -->
+        <meta-data
+            android:name="com.example.location.server.url"
+            android:value="http://192.168.1.10:8080/api/location" />
+        
         <!-- 定位服务 -->
         <service android:name="com.amap.api.location.APSService" />
         
@@ -61,6 +66,12 @@
             android:name=".location.LocationService"
             android:enabled="true"
             android:foregroundServiceType="location"
+            android:exported="false" />
+        
+        <!-- 位置数据上传服务 -->
+        <service
+            android:name=".location.LocationUploadService"
+            android:enabled="true"
             android:exported="false" />
         
         <activity

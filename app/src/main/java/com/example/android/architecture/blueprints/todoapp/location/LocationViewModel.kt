@@ -45,7 +45,9 @@ data class LocationUiState(
     val message: String = "等待定位中...",
     val isLoading: Boolean = false,
     val error: String? = null,
-    val isServiceBound: Boolean = false
+    val isServiceBound: Boolean = false,
+    val isUploadEnabled: Boolean = false,
+    val uploadStatus: String = "未启动"
 )
 
 /**
@@ -64,6 +66,9 @@ class LocationViewModel @Inject constructor(
     
     // 定位服务
     private var locationService: LocationService? = null
+    
+    // 位置上传服务
+    private var uploadService: LocationUploadService? = null
     
     // 服务连接
     private val serviceConnection = object : ServiceConnection {
@@ -105,13 +110,46 @@ class LocationViewModel @Inject constructor(
         }
     }
     
+    // 上传服务连接
+    private val uploadServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            try {
+                Log.d(TAG, "上传服务已连接")
+                val localBinder = binder as LocationUploadService.UploadBinder
+                uploadService = localBinder.getService()
+                
+                // 订阅上传状态
+                viewModelScope.launch {
+                    uploadService?.uploadStatus?.collect { status ->
+                        updateUploadStatus(status)
+                    }
+                }
+                
+                _uiState.update { it.copy(isUploadEnabled = true) }
+            } catch (e: Exception) {
+                Log.e(TAG, "连接上传服务时出错", e)
+            }
+        }
+        
+        override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d(TAG, "上传服务已断开")
+            uploadService = null
+            _uiState.update { it.copy(
+                isUploadEnabled = false,
+                uploadStatus = "服务已断开"
+            ) }
+        }
+    }
+    
     init {
         checkLocationServices()
         bindLocationService()
+        bindUploadService()
     }
     
     override fun onCleared() {
         unbindLocationService()
+        unbindUploadService()
         super.onCleared()
     }
     
@@ -352,5 +390,86 @@ class LocationViewModel @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "无法打开GPS设置页面", e)
         }
+    }
+    
+    /**
+     * 绑定上传服务
+     */
+    private fun bindUploadService() {
+        try {
+            val intent = Intent(context, LocationUploadService::class.java)
+            val bound = context.bindService(intent, uploadServiceConnection, Context.BIND_AUTO_CREATE)
+            Log.d(TAG, "尝试绑定上传服务: $bound")
+        } catch (e: Exception) {
+            Log.e(TAG, "绑定上传服务失败", e)
+        }
+    }
+    
+    /**
+     * 解绑上传服务
+     */
+    private fun unbindUploadService() {
+        if (uploadService != null) {
+            try {
+                context.unbindService(uploadServiceConnection)
+                uploadService = null
+            } catch (e: Exception) {
+                Log.e(TAG, "解绑上传服务失败", e)
+            }
+        }
+    }
+    
+    /**
+     * 更新上传状态
+     */
+    private fun updateUploadStatus(status: LocationUploadService.UploadStatus) {
+        val statusMessage = when (status) {
+            is LocationUploadService.UploadStatus.Idle -> "空闲"
+            is LocationUploadService.UploadStatus.Uploading -> "上传中..."
+            is LocationUploadService.UploadStatus.Success -> "上传成功 (${status.responseCode})"
+            is LocationUploadService.UploadStatus.Error -> "上传失败: ${status.message}"
+        }
+        
+        _uiState.update { it.copy(uploadStatus = statusMessage) }
+    }
+    
+    /**
+     * 设置是否启用上传
+     */
+    fun setUploadEnabled(enabled: Boolean) {
+        uploadService?.setUploadEnabled(enabled)
+        _uiState.update { it.copy(
+            uploadStatus = if (enabled) "已启用" else "已禁用"
+        ) }
+    }
+    
+    /**
+     * 设置上传间隔
+     */
+    fun setUploadInterval(intervalMillis: Long) {
+        uploadService?.setUploadInterval(intervalMillis)
+    }
+    
+    /**
+     * 设置服务器URL
+     */
+    fun setServerUrl(url: String) {
+        if (url.isNotEmpty()) {
+            uploadService?.setServerUrl(url)
+        }
+    }
+    
+    /**
+     * 获取服务器URL
+     */
+    fun getServerUrl(): String {
+        return uploadService?.getServerUrl() ?: ""
+    }
+    
+    /**
+     * 手动上传当前位置
+     */
+    fun uploadCurrentLocation() {
+        uploadService?.uploadLatestLocation()
     }
 } 

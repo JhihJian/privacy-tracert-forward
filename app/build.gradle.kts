@@ -206,4 +206,7 @@ dependencies {
     // AndroidX Test - Hilt testing
     androidTestImplementation(libs.hilt.android.testing)
     kspAndroidTest(libs.hilt.compiler)
+
+    // OkHttp - 用于网络请求
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
 }

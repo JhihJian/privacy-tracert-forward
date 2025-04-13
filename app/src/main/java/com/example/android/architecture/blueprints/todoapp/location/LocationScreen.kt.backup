@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.android.architecture.blueprints.todoapp.TodoTheme
+import com.google.accompanist.dialog.rememberAlertDialogState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 
@@ -137,8 +138,7 @@ fun LocationScreen(
             onStartLocation = { viewModel.startLocation() },
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
-            viewModel = viewModel
+                .padding(paddingValues)
         )
     }
 }
@@ -148,8 +148,7 @@ private fun LocationContent(
     uiState: LocationUiState,
     onPermissionResult: (Boolean) -> Unit,
     onStartLocation: () -> Unit = {},
-    modifier: Modifier = Modifier,
-    viewModel: LocationViewModel
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     
@@ -171,7 +170,7 @@ private fun LocationContent(
         
         if (!allGranted) {
             // 显示指导用户如何手动开启权限的提示
-            val message = "需要位置权限才能获取位置信息。请在设置中手动开启位置权限"
+            val message = "需要位置权限才能获取位置信息。请在设置中手动开启位置权限。"
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
@@ -316,8 +315,7 @@ private fun LocationContent(
                     status = uiState.uploadStatus,
                     onEnableChanged = viewModel::setUploadEnabled,
                     onManualUpload = viewModel::uploadCurrentLocation,
-                    serverUrl = viewModel.getServerUrl(),
-                    onServerUrlChanged = viewModel::setServerUrl
+                    viewModel = viewModel
                 )
             }
         } else {
@@ -469,15 +467,14 @@ private fun UploadControl(
     status: String,
     onEnableChanged: (Boolean) -> Unit,
     onManualUpload: () -> Unit,
-    serverUrl: String = "",
-    onServerUrlChanged: (String) -> Unit = {}
+    viewModel: LocationViewModel = hiltViewModel()
 ) {
     var showUrlDialog by remember { mutableStateOf(false) }
-    var currentServerUrl by remember { mutableStateOf(serverUrl) }
+    var serverUrl by remember { mutableStateOf(viewModel.getServerUrl()) }
     
-    // 刷新URL显示
-    LaunchedEffect(serverUrl) {
-        currentServerUrl = serverUrl
+    // 定期刷新URL显示
+    LaunchedEffect(Unit) {
+        serverUrl = viewModel.getServerUrl()
     }
     
     Card(
@@ -500,7 +497,7 @@ private fun UploadControl(
             
             // 显示当前服务器URL
             Text(
-                text = "服务器URL: ${if (currentServerUrl.isNotEmpty()) currentServerUrl else "未设置"}",
+                text = "服务器URL: ${if (serverUrl.isNotEmpty()) serverUrl else "未设置"}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -565,7 +562,7 @@ private fun UploadControl(
     
     // URL修改对话框
     if (showUrlDialog) {
-        var inputUrl by remember { mutableStateOf(currentServerUrl) }
+        var inputUrl by remember { mutableStateOf(serverUrl) }
         
         AlertDialog(
             onDismissRequest = { showUrlDialog = false },
@@ -588,8 +585,8 @@ private fun UploadControl(
                 Button(
                     onClick = {
                         if (inputUrl.isNotEmpty()) {
-                            onServerUrlChanged(inputUrl)
-                            currentServerUrl = inputUrl
+                            viewModel.setServerUrl(inputUrl)
+                            serverUrl = inputUrl
                         }
                         showUrlDialog = false
                     }

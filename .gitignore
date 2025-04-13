@@ -32,3 +32,5 @@ app/debug/app-debug.apk
 app/debug/output-metadata.json
 .kotlin/sessions/kotlin-compiler-3822453223232661462.salive
 .kotlin/sessions/kotlin-compiler-6157086117405572961.salive
+.kotlin/*
+
