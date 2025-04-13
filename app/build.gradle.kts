@@ -40,6 +40,14 @@ android {
                 arguments += "room.incremental" to "true"
             }
         }
+        
+        // 从local.properties读取高德地图API Key
+        val localProperties = org.jetbrains.kotlin.konan.properties.loadProperties(rootProject.file("local.properties").absolutePath)
+        val defaultAmapKey = localProperties.getProperty("AMAP_API_KEY", "\"测试Key\"") // 提供一个默认值用于CI构建
+        
+        // 将API Key作为BuildConfig字段和清单文件占位符
+        buildConfigField("String", "AMAP_API_KEY", defaultAmapKey)
+        manifestPlaceholders["AMAP_API_KEY"] = defaultAmapKey.replace("\"", "") // 移除引号
     }
 
     buildTypes {
@@ -144,6 +152,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewModelCompose)
     implementation(libs.accompanist.appcompat.theme)
     implementation(libs.accompanist.swiperefresh)
+
+    // 高德地图依赖
+    implementation(files("../libs/Lite3DMap_1.3.2_AMapSearch_9.7.4_AMapLocation_6.4.9_20241226.jar"))
 
     debugImplementation(composeBom)
     debugImplementation(libs.androidx.compose.ui.tooling.core)

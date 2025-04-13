@@ -1,11 +1,34 @@
-*.iml
-.gradle
-local.properties
-.idea
+# 通用
 .DS_Store
-build
-captures
-.externalNativeBuild
+.idea/
+*.iml
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 本地配置文件
+local.properties
+keystore.properties
+debug.keystore
+release.keystore
+
+# 生成的文件
+bin/
+gen/
+out/
+app/release/
+
+# 日志文件
+*.log
+
+# APK文件
+*.apk
+*.aab
+*.ap_
+
 app/debug/app-debug.apk
 app/debug/output-metadata.json
 .kotlin/sessions/kotlin-compiler-3822453223232661462.salive
+.kotlin/sessions/kotlin-compiler-6157086117405572961.salive

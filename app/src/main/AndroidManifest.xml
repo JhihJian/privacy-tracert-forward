@@ -16,13 +16,53 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" >
 
+    <!-- 允许程序打开网络套接字 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 允许程序获取网络状态 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 允许程序访问WiFi网络信息 -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- 允许程序读写手机外部存储  -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- 允许程序获取精确位置信息 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- 允许程序获取粗略位置信息 -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- 允许程序访问额外的位置提供者命令 -->
+    <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
+    <!-- 允许程序改变WiFi状态 -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- 允许程序访问GPS定位 -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- 允许程序锁定屏幕 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 允许程序读取手机状态 -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
     <application
         android:allowBackup="false"
         android:name=".TodoApplication"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
+        
+        <!-- 配置高德地图API Key -->
+        <meta-data
+            android:name="com.amap.api.v2.apikey"
+            android:value="替换为您实际的高德地图Key" />
+        
+        <!-- 定位服务 -->
+        <service android:name="com.amap.api.location.APSService" />
+        
+        <!-- 自定义定位服务 -->
+        <service
+            android:name=".location.LocationService"
+            android:enabled="true"
+            android:foregroundServiceType="location"
+            android:exported="false" />
+        
         <activity
             android:name="com.example.android.architecture.blueprints.todoapp.TodoActivity"
             android:windowSoftInputMode="adjustResize"
