@@ -16,6 +16,12 @@
 
 pluginManagement {
     repositories {
+        // --- Mirror Configuration ---
+        // 优先使用阿里云 Gradle 插件镜像
+        maven("https://maven.aliyun.com/repository/gradle-plugin")
+        // 优先使用阿里云公共镜像 (包含 Central 等)
+        maven("https://maven.aliyun.com/repository/central")
+        maven("https://maven.aliyun.com/repository/public")
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -23,7 +29,12 @@ pluginManagement {
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    
     repositories {
+        // --- Mirror Configuration ---
+        // 优先使用阿里云 Google 镜像
+        maven("https://maven.aliyun.com/repository/public/")
+        maven("https://maven.aliyun.com/repository/central")
         google()
         mavenCentral()
     }

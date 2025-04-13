@@ -24,6 +24,8 @@ initscript {
     val spotlessVersion = "6.25.0"
 
     repositories {
+        maven("https://maven.aliyun.com/repository/public/")
+        maven("https://maven.aliyun.com/repository/central")
         mavenCentral()
     }
 
