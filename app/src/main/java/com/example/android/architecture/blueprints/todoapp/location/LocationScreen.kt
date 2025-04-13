@@ -207,7 +207,7 @@ private fun LocationContent(
     Surface(
         modifier = modifier.fillMaxWidth(),
     ) {
-        if (uiState.isLoading && !uiState.currentLocation?.address.isNullOrEmpty()) {
+        if (uiState.isLoading && uiState.currentLocation != null && uiState.currentLocation.address.isNotEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -246,7 +246,7 @@ private fun LocationContent(
                 
                 if (uiState.currentLocation != null) {
                     Text(
-                        text = "定位成功: ${uiState.currentLocation?.address ?: ""}",
+                        text = "定位成功: ${uiState.currentLocation.address}",
                         style = MaterialTheme.typography.bodyLarge,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(bottom = 16.dp)
@@ -254,7 +254,7 @@ private fun LocationContent(
                     
                     // 显示具体的经纬度
                     Text(
-                        text = "经度: ${uiState.currentLocation?.longitude}, 纬度: ${uiState.currentLocation?.latitude}",
+                        text = "经度: ${uiState.currentLocation.longitude}, 纬度: ${uiState.currentLocation.latitude}",
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(bottom = 8.dp)
@@ -262,10 +262,10 @@ private fun LocationContent(
                     
                     // 显示定位精度和时间
                     Text(
-                        text = "精度: ${uiState.currentLocation?.accuracy}米, 时间: ${
-                            uiState.currentLocation?.time?.let { 
-                                android.text.format.DateFormat.format("yyyy-MM-dd HH:mm:ss", it)
-                            } ?: "未知"
+                        text = "精度: ${uiState.currentLocation.accuracy}米, 时间: ${
+                            uiState.currentLocation.time.let { time -> 
+                                android.text.format.DateFormat.format("yyyy-MM-dd HH:mm:ss", java.util.Date(time)).toString()
+                            }
                         }",
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
@@ -317,7 +317,9 @@ private fun LocationContent(
                     onEnableChanged = viewModel::setUploadEnabled,
                     onManualUpload = viewModel::uploadCurrentLocation,
                     serverUrl = viewModel.getServerUrl(),
-                    onServerUrlChanged = viewModel::setServerUrl
+                    onServerUrlChanged = viewModel::setServerUrl,
+                    userName = uiState.userName,
+                    onUserNameChanged = viewModel::setUserName
                 )
             }
         } else {
@@ -470,14 +472,25 @@ private fun UploadControl(
     onEnableChanged: (Boolean) -> Unit,
     onManualUpload: () -> Unit,
     serverUrl: String = "",
-    onServerUrlChanged: (String) -> Unit = {}
+    onServerUrlChanged: (String) -> Unit = {},
+    userName: String = "默认用户",
+    onUserNameChanged: (String) -> Unit = {}
 ) {
     var showUrlDialog by remember { mutableStateOf(false) }
     var currentServerUrl by remember { mutableStateOf(serverUrl) }
     
+    // 用户名对话框状态
+    var showUserNameDialog by remember { mutableStateOf(false) }
+    var currentUserName by remember { mutableStateOf(userName) }
+    
     // 刷新URL显示
     LaunchedEffect(serverUrl) {
         currentServerUrl = serverUrl
+    }
+    
+    // 刷新用户名显示
+    LaunchedEffect(userName) {
+        currentUserName = userName
     }
     
     Card(
@@ -518,6 +531,28 @@ private fun UploadControl(
                 )
             ) {
                 Text("修改服务器URL")
+            }
+            
+            // 显示当前用户名
+            Text(
+                text = "用户名: $currentUserName",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            )
+            
+            // 修改用户名按钮
+            Button(
+                onClick = { showUserNameDialog = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Text("修改用户名")
             }
             
             Divider(modifier = Modifier.padding(vertical = 8.dp))
@@ -600,6 +635,50 @@ private fun UploadControl(
             dismissButton = {
                 Button(
                     onClick = { showUrlDialog = false }
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+    
+    // 用户名修改对话框
+    if (showUserNameDialog) {
+        var inputUserName by remember { mutableStateOf(currentUserName) }
+        
+        AlertDialog(
+            onDismissRequest = { showUserNameDialog = false },
+            title = { Text("设置用户名") },
+            text = {
+                Column {
+                    Text("请输入您的用户名:", 
+                        modifier = Modifier.padding(bottom = 8.dp))
+                    
+                    OutlinedTextField(
+                        value = inputUserName,
+                        onValueChange = { inputUserName = it },
+                        label = { Text("用户名") },
+                        placeholder = { Text("请输入用户名") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (inputUserName.isNotEmpty()) {
+                            onUserNameChanged(inputUserName)
+                            currentUserName = inputUserName
+                        }
+                        showUserNameDialog = false
+                    }
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = { showUserNameDialog = false }
                 ) {
                     Text("取消")
                 }

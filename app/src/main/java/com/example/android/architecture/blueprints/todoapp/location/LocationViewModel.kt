@@ -25,7 +25,6 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.amap.api.location.AMapLocation
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,14 +39,15 @@ import javax.inject.Inject
  */
 data class LocationUiState(
     val isPermissionGranted: Boolean = false,
-    val currentLocation: AMapLocation? = null,
+    val currentLocation: LocationData? = null,
     val locationJson: String = "",
     val message: String = "等待定位中...",
     val isLoading: Boolean = false,
     val error: String? = null,
     val isServiceBound: Boolean = false,
     val isUploadEnabled: Boolean = false,
-    val uploadStatus: String = "未启动"
+    val uploadStatus: String = "未启动",
+    val userName: String = "默认用户"
 )
 
 /**
@@ -81,7 +81,7 @@ class LocationViewModel @Inject constructor(
                 
                 // 订阅位置更新
                 viewModelScope.launch {
-                    locationService?.locationFlow?.collect { location ->
+                    locationService?.locationDataFlow?.collect { location ->
                         if (location != null) {
                             updateLocation(location)
                         }
@@ -215,7 +215,7 @@ class LocationViewModel @Inject constructor(
     /**
      * 更新位置信息
      */
-    private fun updateLocation(location: AMapLocation) {
+    private fun updateLocation(location: LocationData) {
         // 将位置数据转换为JSON格式
         val locationJson = formatLocationToJson(location)
         
@@ -234,47 +234,40 @@ class LocationViewModel @Inject constructor(
     /**
      * 将位置数据格式化为JSON字符串
      */
-    private fun formatLocationToJson(location: AMapLocation): String {
+    private fun formatLocationToJson(location: LocationData): String {
         return try {
             val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
             val formattedDate = dateFormat.format(java.util.Date(location.time))
             
-            // 构建包含所有必要信息的JSON对象
+            // 使用扁平化格式
             """
             {
-              "基本信息": {
-                "定位类型": ${location.locationType},
-                "定位类型描述": "${getLocationTypeDesc(location.locationType)}",
-                "纬度": ${location.latitude},
-                "经度": ${location.longitude},
-                "精度(米)": ${location.accuracy},
-                "获取时间": "$formattedDate",
-                "海拔高度": ${location.altitude},
-                "速度(米/秒)": ${location.speed},
-                "角度": ${location.bearing},
-                "GPS状态": "${getGpsStatusDesc(location.gpsAccuracyStatus)}"
-              },
-              "地址信息": {
-                "地址": "${location.address ?: ""}",
-                "国家": "${location.country ?: ""}",
-                "省份": "${location.province ?: ""}",
-                "城市": "${location.city ?: ""}",
-                "区县": "${location.district ?: ""}",
-                "街道": "${location.street ?: ""}",
-                "门牌号": "${location.streetNum ?: ""}",
-                "城市编码": "${location.cityCode ?: ""}",
-                "区域编码": "${location.adCode ?: ""}",
-                "POI名称": "${location.poiName ?: ""}",
-                "AOI名称": "${location.aoiName ?: ""}",
-                "建筑物ID": "${location.buildingId ?: ""}",
-                "楼层": "${location.floor ?: ""}"
-              },
-              "其他信息": {
-                "错误码": ${location.errorCode},
-                "错误信息": "${location.errorInfo ?: ""}",
-                "坐标系类型": "${location.coordType ?: ""}",
-                "定位SDK版本": "${location.locationDetail ?: ""}"
-              }
+              "timestamp": "${formattedDate}",
+              "latitude": ${location.latitude},
+              "longitude": ${location.longitude},
+              "accuracy": ${location.accuracy},
+              "address": "${location.address}",
+              "country": "${location.country}",
+              "province": "${location.province}",
+              "city": "${location.city}",
+              "district": "${location.district}",
+              "street": "${location.street}",
+              "streetNum": "${location.streetNum}",
+              "cityCode": "${location.cityCode}",
+              "adCode": "${location.adCode}",
+              "poiName": "${location.poiName}",
+              "aoiName": "${location.aoiName}",
+              "buildingId": "${location.buildingId}",
+              "floor": "${location.floor}",
+              "gpsAccuracyStatus": ${location.gpsAccuracyStatus},
+              "locationType": ${location.locationType},
+              "speed": ${location.speed},
+              "bearing": ${location.bearing},
+              "altitude": ${location.altitude},
+              "errorCode": ${location.errorCode},
+              "errorInfo": "${location.errorInfo}",
+              "coordType": "${location.coordType}",
+              "locationDetail": "${location.locationDetail}"
             }
             """.trimIndent()
         } catch (e: Exception) {
@@ -471,5 +464,22 @@ class LocationViewModel @Inject constructor(
      */
     fun uploadCurrentLocation() {
         uploadService?.uploadLatestLocation()
+    }
+    
+    /**
+     * 设置用户名
+     */
+    fun setUserName(name: String) {
+        if (name.isNotEmpty()) {
+            uploadService?.setUserName(name)
+            _uiState.update { it.copy(userName = name) }
+        }
+    }
+    
+    /**
+     * 获取当前用户名
+     */
+    fun getUserName(): String {
+        return uploadService?.getUserName() ?: _uiState.value.userName
     }
 } 

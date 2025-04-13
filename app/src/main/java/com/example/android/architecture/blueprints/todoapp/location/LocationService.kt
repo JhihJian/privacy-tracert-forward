@@ -46,7 +46,9 @@ class LocationService : Service() {
     
     // 位置数据流
     private val _locationFlow = MutableStateFlow<AMapLocation?>(null)
+    private val _locationDataFlow = MutableStateFlow<LocationData?>(null)
     val locationFlow: StateFlow<AMapLocation?> = _locationFlow.asStateFlow()
+    val locationDataFlow: StateFlow<LocationData?> = _locationDataFlow.asStateFlow()
     
     // 绑定服务的Binder
     private val binder = LocationBinder()
@@ -57,6 +59,11 @@ class LocationService : Service() {
             if (location.errorCode == 0) {
                 // 定位成功，更新位置数据
                 _locationFlow.update { location }
+                
+                // 转换为LocationData并更新流
+                val locationData = convertToLocationData(location)
+                _locationDataFlow.update { locationData }
+                
                 Log.i(TAG, "定位成功: ${location.address}, 经纬度: ${location.latitude},${location.longitude}")
             } else {
                 // 定位失败
@@ -198,9 +205,74 @@ class LocationService : Service() {
     }
     
     /**
+     * 将AMapLocation转换为LocationData
+     */
+    private fun convertToLocationData(location: AMapLocation): LocationData {
+        return LocationData(
+            address = location.address ?: "",
+            latitude = location.latitude,
+            longitude = location.longitude,
+            accuracy = location.accuracy,
+            time = location.time,
+            country = location.country ?: "",
+            province = location.province ?: "",
+            city = location.city ?: "",
+            district = location.district ?: "",
+            street = location.street ?: "",
+            streetNum = location.streetNum ?: "",
+            cityCode = location.cityCode ?: "",
+            adCode = location.adCode ?: "",
+            poiName = location.poiName ?: "",
+            aoiName = location.aoiName ?: "",
+            buildingId = location.buildingId ?: "",
+            floor = location.floor ?: "",
+            gpsAccuracyStatus = location.gpsAccuracyStatus,
+            locationType = location.locationType,
+            speed = location.speed,
+            bearing = location.bearing,
+            altitude = location.altitude,
+            errorCode = location.errorCode,
+            errorInfo = location.errorInfo ?: "",
+            coordType = location.coordType ?: "",
+            locationDetail = location.locationDetail ?: ""
+        )
+    }
+    
+    /**
      * 用于客户端绑定服务的Binder
      */
     inner class LocationBinder : Binder() {
         fun getService(): LocationService = this@LocationService
     }
-} 
+}
+
+// 位置数据DTO，用于传递给ViewModel，不暴露高德地图API
+data class LocationData(
+    val address: String = "",
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val accuracy: Float = 0f,
+    val time: Long = 0L,
+    // 其他必要的位置信息字段
+    val country: String = "",
+    val province: String = "",
+    val city: String = "",
+    val district: String = "",
+    val street: String = "",
+    val streetNum: String = "",
+    val cityCode: String = "",
+    val adCode: String = "",
+    val poiName: String = "",
+    val aoiName: String = "",
+    val buildingId: String = "",
+    val floor: String = "",
+    val gpsAccuracyStatus: Int = 0,
+    val locationType: Int = 0,
+    val speed: Float = 0f,
+    val bearing: Float = 0f,
+    val altitude: Double = 0.0,
+    val errorCode: Int = 0,
+    val errorInfo: String = "",
+    val coordType: String = "",
+    val locationDetail: String = ""
+) 

@@ -61,6 +61,9 @@ class LocationUploadService : Service() {
     // 服务端API地址
     private var serverUrl = ""
     
+    // 用户名信息
+    private var userName = "默认用户"
+    
     // 是否启用位置上传
     private var isUploadEnabled = true
     
@@ -189,10 +192,27 @@ class LocationUploadService : Service() {
     }
     
     /**
+     * 设置用户名
+     */
+    fun setUserName(name: String) {
+        if (name.isNotEmpty()) {
+            userName = name
+            Log.d(TAG, "用户名已设置: $name")
+        }
+    }
+    
+    /**
      * 获取当前服务器URL
      */
     fun getServerUrl(): String {
         return serverUrl
+    }
+    
+    /**
+     * 获取当前用户名
+     */
+    fun getUserName(): String {
+        return userName
     }
     
     /**
@@ -286,7 +306,8 @@ class LocationUploadService : Service() {
               "bearing": ${location.bearing},
               "altitude": ${location.altitude},
               "errorCode": ${location.errorCode},
-              "errorInfo": "${location.errorInfo ?: ""}"
+              "errorInfo": "${location.errorInfo ?: ""}",
+              "userName": "${userName}"
             }
             """.trimIndent()
         } catch (e: Exception) {
