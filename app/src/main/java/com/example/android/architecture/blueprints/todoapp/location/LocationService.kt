@@ -48,6 +48,12 @@ import android.net.ConnectivityManager
 import android.content.ComponentName
 import android.content.ServiceConnection
 import com.example.android.architecture.blueprints.todoapp.location.AlarmService.Companion.ACTION_LOCATION_ALARM
+import java.text.DecimalFormat
+
+// Double扩展函数，用于格式化经纬度
+private fun Double.formatCoordinate(): String {
+    return DecimalFormat("0.000000").format(this)
+}
 
 /**
  * 定位服务，提供持续的位置更新功能
@@ -112,13 +118,24 @@ class LocationService : Service() {
                 val locationData = convertToLocationData(location)
                 _locationDataFlow.update { locationData }
                 
-                Log.i(TAG, "定位成功: ${location.address}, 经纬度: ${location.latitude},${location.longitude}")
+                Log.i(TAG, "定位成功: ${location.address ?: "无地址"}, 经纬度: ${location.latitude.formatCoordinate()}°N, ${location.longitude.formatCoordinate()}°E")
+                
+                // 更新通知，显示最新位置信息
+                val locationText = if (!location.address.isNullOrEmpty()) {
+                    "当前位置: ${location.address}"
+                } else {
+                    "当前坐标: ${location.latitude.formatCoordinate()}°N, ${location.longitude.formatCoordinate()}°E"
+                }
+                updateNotification(locationText)
                 
                 // 发送位置更新的广播，以便LocationUploadService可以接收并处理上传
                 sendLocationBroadcast()
             } else {
                 // 定位失败
                 Log.e(TAG, "定位失败: ${location.errorCode}, ${location.errorInfo}, 当前位置: ${location.latitude},${location.longitude}")
+                
+                // 更新通知，显示定位失败信息
+                updateNotification("定位失败，正在重试...")
             }
         } catch (e: Exception) {
             Log.e(TAG, "处理定位结果时发生异常", e)
@@ -195,6 +212,14 @@ class LocationService : Service() {
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "LocationService onStartCommand")
+        
+        // 处理停止服务的动作
+        if (intent?.action == "STOP_SERVICE") {
+            Log.d(TAG, "收到停止服务的请求")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        
         return START_STICKY
     }
     
@@ -202,6 +227,7 @@ class LocationService : Service() {
         return binder
     }
     
+    @RequiresApi(Build.VERSION_CODES.N)
     override fun onDestroy() {
         // 解绑闹钟服务
         if (isAlarmServiceBound) {
@@ -235,10 +261,13 @@ class LocationService : Service() {
                 val channel = NotificationChannel(
                     NOTIFICATION_CHANNEL_ID,
                     NOTIFICATION_CHANNEL_NAME,
-                    NotificationManager.IMPORTANCE_LOW // 低重要性，避免声音和振动
+                    NotificationManager.IMPORTANCE_DEFAULT // 从低重要性改为默认重要性，确保通知能够持续显示
                 ).apply {
                     description = "持续进行后台定位"
-                    setShowBadge(false) // 不显示角标
+                    setShowBadge(true) // 允许显示角标
+                    enableLights(false) // 不开启呼吸灯
+                    enableVibration(false) // 不开启震动
+                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC // 在锁屏上显示
                 }
                 val manager = getSystemService(NotificationManager::class.java)
                 manager.createNotificationChannel(channel)
@@ -254,20 +283,89 @@ class LocationService : Service() {
      */
     private fun buildForegroundNotification(): Notification {
         return try {
+            // 创建一个点击通知时打开主界面的PendingIntent
+            val pendingIntent = Intent(this, com.example.android.architecture.blueprints.todoapp.TodoActivity::class.java).let { notificationIntent ->
+                notificationIntent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                PendingIntent.getActivity(
+                    this, 0, notificationIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or 
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+                )
+            }
+            
+            // 创建停止服务的PendingIntent
+            val stopIntent = Intent(this, LocationService::class.java).apply {
+                action = "STOP_SERVICE"
+            }
+            val stopPendingIntent = PendingIntent.getService(
+                this, 1, stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or 
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+            )
+
             NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-                .setContentTitle("定位服务运行中")
-                .setContentText("正在后台持续获取位置信息")
+                .setContentTitle("位置追踪")
+                .setContentText("应用正在后台运行，持续追踪位置")
                 .setSmallIcon(R.drawable.ic_my_location)
                 .setOngoing(true) // 使通知持续存在，不可滑动清除
-                .setPriority(NotificationCompat.PRIORITY_LOW) // 低优先级
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT) // 默认优先级
+                .setContentIntent(pendingIntent) // 添加点击动作
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止服务", stopPendingIntent) // 添加停止服务按钮
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 在锁屏上完全显示
                 .build()
         } catch (e: Exception) {
             Log.e(TAG, "构建通知失败", e)
             // 返回一个基本的通知，避免服务崩溃
             NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-                .setContentTitle("定位服务")
+                .setContentTitle("位置追踪")
                 .setSmallIcon(android.R.drawable.ic_menu_mylocation)
                 .build()
+        }
+    }
+    
+    /**
+     * 更新前台服务通知
+     * @param locationInfo 可选的位置信息文本，用于更新通知内容
+     */
+    private fun updateNotification(locationInfo: String? = null) {
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            // 创建点击通知时打开主界面的PendingIntent
+            val pendingIntent = Intent(this, com.example.android.architecture.blueprints.todoapp.TodoActivity::class.java).let { notificationIntent ->
+                notificationIntent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                PendingIntent.getActivity(
+                    this, 0, notificationIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or 
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+                )
+            }
+            
+            // 创建停止服务的PendingIntent
+            val stopIntent = Intent(this, LocationService::class.java).apply {
+                action = "STOP_SERVICE"
+            }
+            val stopPendingIntent = PendingIntent.getService(
+                this, 1, stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or 
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+            )
+            
+            val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+                .setContentTitle("位置追踪")
+                .setContentText(locationInfo ?: "应用正在后台运行，持续追踪位置")
+                .setSmallIcon(R.drawable.ic_my_location)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(pendingIntent)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止服务", stopPendingIntent)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .build()
+                
+            notificationManager.notify(NOTIFICATION_ID, notification)
+            Log.d(TAG, "前台服务通知已更新")
+        } catch (e: Exception) {
+            Log.e(TAG, "更新通知失败", e)
         }
     }
     
