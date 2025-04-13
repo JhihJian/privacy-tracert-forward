@@ -40,6 +40,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Job
 import android.content.pm.PackageManager
+import android.os.Build
+import androidx.annotation.RequiresApi
+import android.content.IntentFilter
 
 /**
  * 位置上传服务，负责将位置数据上传到指定服务器
@@ -83,6 +86,12 @@ class LocationUploadService : Service() {
     // 上传间隔（毫秒）
     private var uploadInterval = 5000L // 默认5秒
     
+    // 后台模式上传间隔（毫秒）
+    private var backgroundUploadInterval = 3 * 60 * 1000L // 默认3分钟
+    
+    // 前台模式标志
+    private var isInForeground = true
+    
     // 绑定位置服务的连接
     private val locationServiceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -101,12 +110,54 @@ class LocationUploadService : Service() {
     // 暴露给客户端的Binder
     private val binder = UploadBinder()
     
+    // 位置更新广播接收器
+    private val locationUpdateReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.example.android.architecture.blueprints.todoapp.LOCATION_UPDATED") {
+                Log.d(TAG, "收到位置更新广播 (${if(isInForeground) "前台" else "后台"}模式)")
+                
+                // 当位置更新时，检查是否该上传
+                if (isUploadEnabled) {
+                    val currentTime = System.currentTimeMillis()
+                    val interval = getCurrentUploadInterval()
+                    
+                    // 后台模式时，强制触发一次上传
+                    if (!isInForeground || currentTime - lastUploadTime >= interval) {
+                        Log.d(TAG, "触发位置上传 (间隔: ${(currentTime - lastUploadTime)/1000}秒)")
+                        uploadLatestLocation()
+                        lastUploadTime = currentTime
+                    } else {
+                        Log.d(TAG, "跳过位置上传：间隔过短 (${(currentTime - lastUploadTime)/1000}秒 < ${interval/1000}秒)")
+                    }
+                }
+            }
+        }
+    }
+    
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "位置上传服务已创建")
         
         // 从AndroidManifest.xml读取服务器URL
         readServerUrlFromManifest()
+        
+        // 注册位置更新广播接收器
+        try {
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Context.RECEIVER_NOT_EXPORTED
+            } else {
+                0
+            }
+            registerReceiver(
+                locationUpdateReceiver, 
+                IntentFilter("com.example.android.architecture.blueprints.todoapp.LOCATION_UPDATED"),
+                flags
+            )
+            Log.d(TAG, "位置更新广播接收器注册成功")
+        } catch (e: Exception) {
+            Log.e(TAG, "注册位置更新广播接收器失败", e)
+        }
         
         // 绑定位置服务
         val intent = Intent(this, LocationService::class.java)
@@ -124,6 +175,13 @@ class LocationUploadService : Service() {
     
     override fun onDestroy() {
         stopCollectingLocation()
+        
+        // 注销位置更新广播接收器
+        try {
+            unregisterReceiver(locationUpdateReceiver)
+        } catch (e: Exception) {
+            Log.e(TAG, "注销位置更新广播接收器失败", e)
+        }
         
         // 解绑位置服务
         try {
@@ -146,7 +204,7 @@ class LocationUploadService : Service() {
                 if (location != null && isUploadEnabled) {
                     val currentTime = System.currentTimeMillis()
                     // 检查是否达到上传间隔
-                    if (currentTime - lastUploadTime >= uploadInterval) {
+                    if (currentTime - lastUploadTime >= getCurrentUploadInterval()) {
                         uploadLocation(location)
                         lastUploadTime = currentTime
                     }
@@ -178,7 +236,35 @@ class LocationUploadService : Service() {
      */
     fun setUploadInterval(intervalMillis: Long) {
         uploadInterval = intervalMillis
-        Log.d(TAG, "位置上传间隔已设置为 $intervalMillis 毫秒")
+        Log.d(TAG, "位置上传间隔已设置为 $intervalMillis 毫秒（前台模式）")
+    }
+    
+    /**
+     * 设置后台上传间隔
+     */
+    fun setBackgroundUploadInterval(intervalMillis: Long) {
+        backgroundUploadInterval = intervalMillis
+        Log.d(TAG, "后台位置上传间隔已设置为 $intervalMillis 毫秒")
+    }
+    
+    /**
+     * 设置应用是否在前台运行
+     */
+    fun setForegroundMode(inForeground: Boolean) {
+        if (this.isInForeground != inForeground) {
+            this.isInForeground = inForeground
+            Log.d(TAG, "应用模式切换为: ${if(inForeground) "前台" else "后台"}")
+            
+            // 应用状态改变时，触发一次上传
+            uploadLatestLocation()
+        }
+    }
+    
+    /**
+     * 获取当前应该使用的上传间隔
+     */
+    private fun getCurrentUploadInterval(): Long {
+        return if (isInForeground) uploadInterval else backgroundUploadInterval
     }
     
     /**

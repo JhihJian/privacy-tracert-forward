@@ -482,4 +482,25 @@ class LocationViewModel @Inject constructor(
     fun getUserName(): String {
         return uploadService?.getUserName() ?: _uiState.value.userName
     }
+    
+    /**
+     * 设置定位唤醒间隔（分钟）
+     */
+    fun setLocationAlarmInterval(minutes: Int) {
+        if (minutes >= 1) {
+            val intervalMillis = minutes * 60 * 1000L
+            locationService?.setLocationAlarmInterval(intervalMillis)
+            // 同时设置后台上传间隔
+            uploadService?.setBackgroundUploadInterval(intervalMillis)
+            Log.d(TAG, "设置定位唤醒和后台上传间隔为 $minutes 分钟")
+        }
+    }
+    
+    /**
+     * 设置应用是否在前台运行
+     */
+    fun setForegroundMode(inForeground: Boolean) {
+        uploadService?.setForegroundMode(inForeground)
+        Log.d(TAG, "设置应用模式为: ${if(inForeground) "前台" else "后台"}")
+    }
 } 

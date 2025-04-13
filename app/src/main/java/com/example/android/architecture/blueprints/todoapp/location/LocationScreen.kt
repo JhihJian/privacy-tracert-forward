@@ -79,6 +79,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.android.architecture.blueprints.todoapp.TodoTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.IBinder
+import androidx.compose.material3.Slider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,7 +162,8 @@ private fun LocationContent(
     // 定位权限请求 - 仅保留必要的位置权限
     val permissions = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+        Manifest.permission.FOREGROUND_SERVICE_LOCATION
     )
     
     // 记录权限状态

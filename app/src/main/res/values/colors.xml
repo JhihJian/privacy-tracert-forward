@@ -25,4 +25,6 @@
 
     <drawable name="touchFeedback">#CFD8DC</drawable>
 
+    <color name="ic_launcher_background">#FFFFFF</color>
+
 </resources>

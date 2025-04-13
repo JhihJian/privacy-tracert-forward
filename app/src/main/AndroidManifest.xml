@@ -38,6 +38,12 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- 允许程序读取手机状态 -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- 允许程序在前台运行服务 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- 允许程序发送通知 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 允许程序在前台服务中使用位置信息 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <application
         android:allowBackup="false"
@@ -51,7 +57,7 @@
         <!-- 配置高德地图API Key -->
         <meta-data
             android:name="com.amap.api.v2.apikey"
-            android:value="替换为您实际的高德地图Key" />
+            android:value="${AMAP_API_KEY}" />
         
         <!-- 配置位置上传服务器URL -->
         <meta-data
@@ -67,6 +73,22 @@
             android:enabled="true"
             android:foregroundServiceType="location"
             android:exported="false" />
+        
+        <!-- 闹钟服务 -->
+        <service
+            android:name=".location.AlarmService"
+            android:enabled="true"
+            android:exported="false" />
+        
+        <!-- 闹钟广播接收器 -->
+        <receiver
+            android:name=".location.AlarmReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.android.architecture.blueprints.todoapp.ACTION_LOCATION_ALARM" />
+            </intent-filter>
+        </receiver>
         
         <!-- 位置数据上传服务 -->
         <service
