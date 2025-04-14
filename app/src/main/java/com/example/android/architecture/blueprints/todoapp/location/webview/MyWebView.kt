@@ -33,6 +33,26 @@ class MyWebView : WebView {
         this.webViewCallback = callback
     }
 
+    /**
+     * 执行JavaScript代码
+     */
+    fun evaluateJavascript(script: String, resultCallback: ((String) -> Unit)? = null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            super.evaluateJavascript(script, resultCallback)
+        } else {
+            // 兼容低版本
+            loadUrl("javascript:$script")
+            resultCallback?.invoke("")
+        }
+    }
+    
+    /**
+     * 添加JavaScript接口
+     */
+    override fun addJavascriptInterface(obj: Any, name: String) {
+        super.addJavascriptInterface(obj, name)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun initBridgeWebView(context: Context, attrs: AttributeSet?) {
         val settings = settings

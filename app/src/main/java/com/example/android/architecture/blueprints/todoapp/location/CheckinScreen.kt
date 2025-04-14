@@ -48,8 +48,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.android.architecture.blueprints.todoapp.location.webview.AMapHelper
 import com.example.android.architecture.blueprints.todoapp.location.webview.MyWebView
+import com.example.android.architecture.blueprints.todoapp.location.webview.MapProxy
+import com.example.android.architecture.blueprints.todoapp.location.webview.MarkerOptions
+import com.example.android.architecture.blueprints.todoapp.location.webview.CameraUpdateFactory
 import kotlinx.coroutines.launch
-import com.amap.api.maps.AMap
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,6 +109,24 @@ fun CheckinScreen(
     LaunchedEffect(key1 = uiState.errorMessage) {
         uiState.errorMessage?.let { errorMessage ->
             snackbarHostState.showSnackbar(errorMessage)
+        }
+    }
+    
+    // 订阅位置数据流
+    LaunchedEffect(Unit) {
+        viewModel.subscribeToLocationUpdates()
+    }
+    
+    // 监听位置变化，更新地图
+    LaunchedEffect(key1 = uiState.currentLocation) {
+        uiState.currentLocation?.let { location ->
+            // 如果地图已就绪且位置非空，在网页中显示位置
+            if (uiState.isMapReady) {
+                // 使用JavaScript在网页中显示位置
+                mapHelper.webViewRef?.let { webView ->
+                    mapHelper.showLocation(webView, location)
+                }
+            }
         }
     }
     
@@ -176,21 +196,32 @@ fun CheckinScreen(
                 // 使用AndroidView加载WebView
                 AndroidView(
                     factory = { ctx ->
-                        MyWebView(ctx).apply {
+                        val webView = MyWebView(ctx).apply {
                             // 初始化地图
-                            mapHelper.initMap(this) { aMap ->
+                            mapHelper.initMap(this) { mapProxy ->
                                 // 地图加载完成
                                 viewModel.updateMapReadyStatus(true)
                                 
-                                // 设置地图样式
-                                aMap.mapType = AMap.MAP_TYPE_NORMAL // 标准地图
-
-                                // 设置定位图层样式
-                                val myLocationStyle = com.amap.api.maps.model.MyLocationStyle()
-                                myLocationStyle.myLocationType(com.amap.api.maps.model.MyLocationStyle.LOCATION_TYPE_LOCATE)
-                                aMap.myLocationStyle = myLocationStyle
+                                // 设置地图UI控件
+                                val uiSettings = mapProxy.getUiSettings()
+                                uiSettings.setZoomControlsEnabled(true)
+                                uiSettings.setCompassEnabled(true)
+                                uiSettings.setMyLocationButtonEnabled(true)
+                                uiSettings.setScaleControlsEnabled(true)
+                                
+                                // 设置地图点击事件
+                                mapProxy.setOnMapClickListener { latLng ->
+                                    // 在地图上点击时可以添加自定义逻辑，例如添加打卡点
+                                    Log.d("CheckinScreen", "地图点击: ${latLng.latitude}, ${latLng.longitude}")
+                                }
+                                
+                                // 如果已经有位置数据，直接显示
+                                uiState.currentLocation?.let { location ->
+                                    mapHelper.showLocation(this, location)
+                                }
                             }
                         }
+                        webView
                     },
                     modifier = Modifier.fillMaxSize()
                 )
