@@ -14,6 +14,11 @@ interface LocationRepository {
     fun getLocationDataFlow(): Flow<LocationData?>
     
     /**
+     * 获取当前位置（用于地图定位）
+     */
+    suspend fun getCurrentLocation(): LocationData?
+    
+    /**
      * 开始定位
      */
     fun startLocation()

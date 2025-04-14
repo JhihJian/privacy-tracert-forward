@@ -26,6 +26,7 @@ import com.example.android.architecture.blueprints.todoapp.TodoScreens.LOCATION_
 import com.example.android.architecture.blueprints.todoapp.TodoScreens.STATISTICS_SCREEN
 import com.example.android.architecture.blueprints.todoapp.TodoScreens.TASKS_SCREEN
 import com.example.android.architecture.blueprints.todoapp.TodoScreens.TASK_DETAIL_SCREEN
+import com.example.android.architecture.blueprints.todoapp.TodoScreens.CHECKIN_SCREEN
 
 /**
  * Screens used in [TodoDestinations]
@@ -36,6 +37,7 @@ private object TodoScreens {
     const val TASK_DETAIL_SCREEN = "task"
     const val ADD_EDIT_TASK_SCREEN = "addEditTask"
     const val LOCATION_SCREEN = "location"
+    const val CHECKIN_SCREEN = "checkin"
 }
 
 /**
@@ -56,6 +58,7 @@ object TodoDestinations {
     const val TASK_DETAIL_ROUTE = "$TASK_DETAIL_SCREEN/{$TASK_ID_ARG}"
     const val ADD_EDIT_TASK_ROUTE = "$ADD_EDIT_TASK_SCREEN/{$TITLE_ARG}?$TASK_ID_ARG={$TASK_ID_ARG}"
     const val LOCATION_ROUTE = LOCATION_SCREEN
+    const val CHECKIN_ROUTE = CHECKIN_SCREEN
 }
 
 /**
@@ -121,5 +124,21 @@ class TodoNavigationActions(private val navController: NavHostController) {
                 if (taskId != null) "$it?$TASK_ID_ARG=$taskId" else it
             }
         )
+    }
+
+    fun navigateToCheckin() {
+        navController.navigate(TodoDestinations.CHECKIN_ROUTE) {
+            // Pop up to the start destination of the graph to
+            // avoid building up a large stack of destinations
+            // on the back stack as users select items
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            // Avoid multiple copies of the same destination when
+            // reselecting the same item
+            launchSingleTop = true
+            // Restore state when reselecting a previously selected item
+            restoreState = true
+        }
     }
 }

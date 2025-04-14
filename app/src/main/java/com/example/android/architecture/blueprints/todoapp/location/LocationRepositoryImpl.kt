@@ -156,6 +156,38 @@ class LocationRepositoryImpl @Inject constructor(
         return locationService?.locationDataFlow ?: MutableStateFlow(null)
     }
     
+    /**
+     * 获取当前位置（用于地图定位）
+     */
+    override suspend fun getCurrentLocation(): LocationData? {
+        // 如果服务未绑定，返回null
+        if (!_serviceBound.value) {
+            Log.d(TAG, "获取当前位置失败：服务未绑定")
+            return null
+        }
+        
+        try {
+            // 从服务中获取最新位置
+            val lastLocation = locationService?.getLastLocation()
+            
+            // 如果没有最新位置，尝试请求一次定位
+            if (lastLocation == null) {
+                Log.d(TAG, "无最新位置数据，尝试请求一次定位")
+                locationService?.requestLocationOnce()
+                
+                // 等待短暂时间后再次尝试获取
+                kotlinx.coroutines.delay(1000)
+                return locationService?.getLastLocation()
+            }
+            
+            return lastLocation
+        } catch (e: Exception) {
+            Log.e(TAG, "获取当前位置时出错", e)
+            _locationError.value = "获取位置失败: ${e.message}"
+            return null
+        }
+    }
+    
     override fun startLocation() {
         if (_serviceBound.value) {
             locationService?.startLocation()

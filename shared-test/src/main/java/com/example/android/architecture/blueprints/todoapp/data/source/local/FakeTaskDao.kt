@@ -63,7 +63,13 @@ class FakeTaskDao(initialTasks: List<LocalTask>? = emptyList()) : TaskDao {
     override suspend fun deleteCompleted(): Int {
         _tasks?.apply {
             val originalSize = size
-            entries.removeIf { it.value.isCompleted }
+            val iterator = entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (entry.value.isCompleted) {
+                    iterator.remove()
+                }
+            }
             return originalSize - size
         }
         return 0

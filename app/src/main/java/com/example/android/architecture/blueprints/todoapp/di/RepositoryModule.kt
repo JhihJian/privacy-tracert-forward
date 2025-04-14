@@ -9,11 +9,11 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 /**
- * 仓库模块
+ * 位置仓库模块
  */
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class RepositoryModule {
+abstract class LocationRepositoryModule {
     
     /**
      * 提供位置仓库

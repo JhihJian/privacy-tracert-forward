@@ -49,6 +49,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.example.android.architecture.blueprints.todoapp.location.webview.AMapHelper
 import com.example.android.architecture.blueprints.todoapp.location.webview.MyWebView
 import kotlinx.coroutines.launch
+import com.amap.api.maps.AMap
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -182,10 +183,12 @@ fun CheckinScreen(
                                 viewModel.updateMapReadyStatus(true)
                                 
                                 // 设置地图样式
-                                aMap.setMapType(1) // 标准地图
-                                
-                                // 启用定位图层
-                                aMap.setMyLocationEnabled(true)
+                                aMap.mapType = AMap.MAP_TYPE_NORMAL // 标准地图
+
+                                // 设置定位图层样式
+                                val myLocationStyle = com.amap.api.maps.model.MyLocationStyle()
+                                myLocationStyle.myLocationType(com.amap.api.maps.model.MyLocationStyle.LOCATION_TYPE_LOCATE)
+                                aMap.myLocationStyle = myLocationStyle
                             }
                         }
                     },

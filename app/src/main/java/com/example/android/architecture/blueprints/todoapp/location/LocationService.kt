@@ -667,6 +667,54 @@ class LocationService : Service() {
             Log.e(TAG, "发送位置更新广播失败", e)
         }
     }
+    
+    /**
+     * 获取最新位置数据
+     */
+    fun getLastLocation(): LocationData? {
+        return locationDataFlow.value
+    }
+    
+    /**
+     * 请求一次性定位
+     * 适用于地图场景下的快速定位
+     */
+    fun requestLocationOnce() {
+        // 如果正在定位，直接返回
+        if (isLocationEnabled) {
+            return
+        }
+        
+        try {
+            // 创建定位请求
+            val locationClientOption = AMapLocationClientOption()
+            // 设置定位模式为高精度模式
+            locationClientOption.locationMode = AMapLocationClientOption.AMapLocationMode.Hight_Accuracy
+            // 设置为单次定位
+            locationClientOption.isOnceLocation = true
+            // 设置定位超时时间
+            locationClientOption.httpTimeOut = 20000
+            
+            // 设置定位参数
+            locationClient?.setLocationOption(locationClientOption)
+            
+            // 启动定位
+            locationClient?.startLocation()
+            
+            // 记录状态
+            isLocationEnabled = true
+            
+            // 5秒后自动停止定位（避免资源浪费）
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (locationClient != null && isLocationEnabled) {
+                    locationClient?.stopLocation()
+                    isLocationEnabled = false
+                }
+            }, 5000)
+        } catch (e: Exception) {
+            Log.e(TAG, "请求一次性定位失败", e)
+        }
+    }
 }
 
 // 位置数据DTO，用于传递给ViewModel，不暴露高德地图API

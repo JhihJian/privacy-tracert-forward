@@ -67,6 +67,7 @@ fun AppModalDrawer(
                 navigateToTasks = { navigationActions.navigateToTasks() },
                 navigateToStatistics = { navigationActions.navigateToStatistics() },
                 navigateToLocation = { navigationActions.navigateToLocation() },
+                navigateToCheckin = { navigationActions.navigateToCheckin() },
                 closeDrawer = { coroutineScope.launch { drawerState.close() } }
             )
         }
@@ -81,6 +82,7 @@ private fun AppDrawer(
     navigateToTasks: () -> Unit,
     navigateToStatistics: () -> Unit,
     navigateToLocation: () -> Unit,
+    navigateToCheckin: () -> Unit,
     closeDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -111,6 +113,15 @@ private fun AppDrawer(
                 isSelected = currentRoute == TodoDestinations.LOCATION_ROUTE,
                 action = {
                     navigateToLocation()
+                    closeDrawer()
+                }
+            )
+            DrawerButton(
+                painter = painterResource(id = R.drawable.ic_location),
+                label = "新增打卡点",
+                isSelected = currentRoute == TodoDestinations.CHECKIN_ROUTE,
+                action = {
+                    navigateToCheckin()
                     closeDrawer()
                 }
             )
@@ -194,6 +205,7 @@ fun PreviewAppDrawer() {
                 navigateToTasks = {},
                 navigateToStatistics = {},
                 navigateToLocation = {},
+                navigateToCheckin = {},
                 closeDrawer = {}
             )
         }

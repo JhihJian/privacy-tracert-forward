@@ -36,6 +36,7 @@ import com.example.android.architecture.blueprints.todoapp.TodoDestinationsArgs.
 import com.example.android.architecture.blueprints.todoapp.TodoDestinationsArgs.TITLE_ARG
 import com.example.android.architecture.blueprints.todoapp.TodoDestinationsArgs.USER_MESSAGE_ARG
 import com.example.android.architecture.blueprints.todoapp.addedittask.AddEditTaskScreen
+import com.example.android.architecture.blueprints.todoapp.location.CheckinScreen
 import com.example.android.architecture.blueprints.todoapp.location.LocationScreen
 import com.example.android.architecture.blueprints.todoapp.statistics.StatisticsScreen
 import com.example.android.architecture.blueprints.todoapp.taskdetail.TaskDetailScreen
@@ -87,6 +88,11 @@ fun TodoNavGraph(
         composable(TodoDestinations.LOCATION_ROUTE) {
             AppModalDrawer(drawerState, currentRoute, navActions) {
                 LocationScreen(openDrawer = { coroutineScope.launch { drawerState.open() } })
+            }
+        }
+        composable(TodoDestinations.CHECKIN_ROUTE) {
+            AppModalDrawer(drawerState, currentRoute, navActions) {
+                CheckinScreen(openDrawer = { coroutineScope.launch { drawerState.open() } })
             }
         }
         composable(

@@ -7,11 +7,15 @@ import android.util.AttributeSet
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 
 /**
- * 自定义WebView，用于加载高德地图
+ * 自定义WebView，用于展示高德地图
+ * 包含了展示高德地图所需的所有WebView设置
  */
 class MyWebView : WebView {
+    private var webViewCallback: WebViewCallback? = null
+    
     constructor(context: Context) : this(context, null)
 
     constructor(context: Context, attrs: AttributeSet?) : super(context, attrs) {
@@ -20,6 +24,13 @@ class MyWebView : WebView {
 
     constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {
         initBridgeWebView(context, attrs)
+    }
+    
+    /**
+     * 设置WebView回调
+     */
+    fun setWebViewCallback(callback: WebViewCallback) {
+        this.webViewCallback = callback
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -55,12 +66,19 @@ class MyWebView : WebView {
         }
         settings.allowContentAccess = true
         settings.databaseEnabled = true
-        
-        // 允许blob请求
+        // 允许blob请求过不了
         settings.allowFileAccessFromFileURLs = true
         // 允许本地的缓存
         settings.allowUniversalAccessFromFileURLs = true
 
-        webChromeClient = WebChromeClient()
+        setWebChromeClient(WebChromeClient())
+        
+        // 设置WebViewClient以监听页面加载完成事件
+        setWebViewClient(object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                webViewCallback?.onPageFinished()
+            }
+        })
     }
 } 

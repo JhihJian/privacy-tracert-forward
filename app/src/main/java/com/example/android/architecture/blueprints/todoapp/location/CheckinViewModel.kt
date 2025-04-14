@@ -2,8 +2,8 @@ package com.example.android.architecture.blueprints.todoapp.location
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.amap.jsmap.core.AMap
-import com.amap.jsmap.core.model.LatLng
+import com.amap.api.maps.AMap
+import com.amap.api.maps.model.LatLng
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +34,18 @@ class CheckinViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(CheckinUiState())
     val uiState: StateFlow<CheckinUiState> = _uiState.asStateFlow()
 
+    init {
+        // 初始化时订阅服务绑定状态
+        viewModelScope.launch {
+            locationRepository.getServiceBoundFlow().collect { isBound ->
+                if (isBound && _uiState.value.isPermissionGranted) {
+                    // 服务已绑定且有权限，可以获取位置
+                    getCurrentLocation()
+                }
+            }
+        }
+    }
+
     /**
      * 更新地图准备状态
      */
@@ -46,6 +58,11 @@ class CheckinViewModel @Inject constructor(
      */
     fun updatePermissionStatus(isGranted: Boolean) {
         _uiState.update { it.copy(isPermissionGranted = isGranted) }
+        
+        // 如果有权限，尝试获取位置
+        if (isGranted && locationRepository.isServiceBound()) {
+            getCurrentLocation()
+        }
     }
 
     /**
