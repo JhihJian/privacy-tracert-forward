@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.util.AttributeSet
+import android.util.Log
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -48,8 +49,16 @@ class MyWebView : WebView {
     
     /**
      * 添加JavaScript接口
+     * 确保所有接口方法都使用@JavascriptInterface注解
      */
     override fun addJavascriptInterface(obj: Any, name: String) {
+        // 验证对象中是否有@JavascriptInterface注解
+        val hasAnnotation = obj.javaClass.methods.any { 
+            it.isAnnotationPresent(android.webkit.JavascriptInterface::class.java) 
+        }
+        if (!hasAnnotation) {
+            Log.w("MyWebView", "添加的JavaScript接口对象($name)没有任何方法使用@JavascriptInterface注解，在API 17以上将不可见")
+        }
         super.addJavascriptInterface(obj, name)
     }
 

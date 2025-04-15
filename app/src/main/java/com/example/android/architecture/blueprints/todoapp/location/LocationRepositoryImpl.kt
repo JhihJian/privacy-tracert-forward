@@ -7,10 +7,14 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,16 +23,19 @@ import javax.inject.Singleton
  */
 @Singleton
 class LocationRepositoryImpl @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository
 ) : LocationRepository {
     
     private val TAG = "LocationRepository"
     
+    // 协程作用域
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    
     // 状态流
     private val _permissionGranted = MutableStateFlow(false)
     private val _serviceBound = MutableStateFlow(false)
-    private val _locationError = MutableStateFlow<String?>(null)
-    private val _isServiceBound = MutableStateFlow(false)
+    private val _locationError = MutableStateFlow<LocationError?>(null)
     
     // 定位服务
     private var locationService: LocationService? = null
@@ -51,10 +58,20 @@ class LocationRepositoryImpl @Inject constructor(
                     startLocation()
                 } else {
                     Log.d(TAG, "服务已连接，但无权限，等待权限")
+                    _locationError.value = LocationError.PermissionDenied
+                }
+                
+                // 监听位置服务的错误流
+                repositoryScope.launch {
+                    locationService?.errorFlow?.collect { error ->
+                        if (error != null) {
+                            _locationError.value = error
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "服务连接过程中发生错误", e)
-                _locationError.value = "服务连接错误: ${e.message}"
+                _locationError.value = LocationError.ServiceBindFailed
             }
         }
         
@@ -71,8 +88,12 @@ class LocationRepositoryImpl @Inject constructor(
                 Log.d(TAG, "上传服务已连接")
                 val localBinder = binder as LocationUploadService.UploadBinder
                 uploadService = localBinder.getService()
+                
+                // 设置服务中的前台/后台状态
+                uploadService?.setForegroundMode(true) // 默认为前台模式
             } catch (e: Exception) {
                 Log.e(TAG, "连接上传服务时出错", e)
+                _locationError.value = LocationError.UnknownError("连接上传服务时出错: ${e.message}")
             }
         }
         
@@ -98,11 +119,11 @@ class LocationRepositoryImpl @Inject constructor(
             Log.d(TAG, "尝试绑定定位服务: $bound")
             
             if (!bound) {
-                _locationError.value = "绑定服务失败"
+                _locationError.value = LocationError.ServiceBindFailed
             }
         } catch (e: Exception) {
             Log.e(TAG, "绑定定位服务失败", e)
-            _locationError.value = e.message
+            _locationError.value = LocationError.UnknownError("绑定定位服务失败: ${e.message}")
         }
     }
     
@@ -127,6 +148,7 @@ class LocationRepositoryImpl @Inject constructor(
             Log.d(TAG, "尝试绑定上传服务: $bound")
         } catch (e: Exception) {
             Log.e(TAG, "绑定上传服务失败", e)
+            _locationError.value = LocationError.UnknownError("绑定上传服务失败: ${e.message}")
         }
     }
     
@@ -160,49 +182,19 @@ class LocationRepositoryImpl @Inject constructor(
      * 获取当前位置（用于地图定位）
      */
     override suspend fun getCurrentLocation(): LocationData? {
-        // 如果服务未绑定，返回null
-        if (!_serviceBound.value) {
-            Log.d(TAG, "获取当前位置失败：服务未绑定")
-            return null
-        }
-        
-        try {
-            // 从服务中获取最新位置
-            val lastLocation = locationService?.getLastLocation()
-            
-            // 如果没有最新位置，尝试请求一次定位
-            if (lastLocation == null) {
-                Log.d(TAG, "无最新位置数据，尝试请求一次定位")
-                locationService?.requestLocationOnce()
-                
-                // 等待短暂时间后再次尝试获取
-                kotlinx.coroutines.delay(1000)
-                return locationService?.getLastLocation()
-            }
-            
-            return lastLocation
-        } catch (e: Exception) {
-            Log.e(TAG, "获取当前位置时出错", e)
-            _locationError.value = "获取位置失败: ${e.message}"
-            return null
-        }
+        return locationService?.getLastLocation()
     }
     
     override fun startLocation() {
-        if (_serviceBound.value) {
-            locationService?.startLocation()
-        }
+        locationService?.startLocation()
     }
     
     override fun stopLocation() {
-        if (_serviceBound.value) {
-            locationService?.stopLocation()
-        }
+        locationService?.stopLocation()
     }
     
     override fun setServiceBound(bound: Boolean) {
         _serviceBound.value = bound
-        _isServiceBound.value = bound
     }
     
     override fun isServiceBound(): Boolean {
@@ -213,55 +205,21 @@ class LocationRepositoryImpl @Inject constructor(
      * 获取服务绑定状态流
      */
     override fun getServiceBoundFlow(): Flow<Boolean> {
-        return _isServiceBound.asStateFlow()
+        return _serviceBound.asStateFlow()
     }
     
     override fun checkLocationServices() {
-        try {
-            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-            val isGpsEnabled = locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
-            val isNetworkEnabled = locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
-            
-            Log.i(TAG, "GPS状态: ${if (isGpsEnabled) "开启" else "关闭"}, 网络定位状态: ${if (isNetworkEnabled) "开启" else "关闭"}")
-            
-            if (!isGpsEnabled && !isNetworkEnabled) {
-                _locationError.value = "定位服务未开启"
-                
-                // 显示开启GPS的提示
-                showGpsSettings()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "检查位置服务状态失败", e)
-        }
-    }
-    
-    /**
-     * 显示GPS设置提示
-     */
-    private fun showGpsSettings() {
-        try {
-            // 创建一个Intent跳转到位置设置页面
-            val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "无法打开GPS设置页面", e)
-        }
+        // 检查GPS是否开启，这个逻辑已经移到LocationService中
     }
     
     override fun updatePermissionStatus(isGranted: Boolean) {
-        Log.d(TAG, "更新权限状态: isGranted=$isGranted, 当前ServiceBound=${_serviceBound.value}")
-        
+        Log.d(TAG, "更新位置权限状态: $isGranted")
         _permissionGranted.value = isGranted
         
-        // 如果权限已授予但服务未绑定，绑定服务
-        if (isGranted && locationService == null) {
-            bindLocationService()
-        }
-        
-        // 如果权限已授予且服务已绑定，开始定位
-        if (isGranted && _serviceBound.value) {
-            locationService?.startLocation()
+        if (isGranted && isServiceBound()) {
+            startLocation()
+        } else if (!isGranted) {
+            _locationError.value = LocationError.PermissionDenied
         }
     }
     
@@ -269,46 +227,67 @@ class LocationRepositoryImpl @Inject constructor(
         return _permissionGranted.value
     }
     
-    override fun getLocationError(): String? {
+    override fun getLocationError(): LocationError? {
         return _locationError.value
     }
     
     /**
      * 获取错误信息流
      */
-    override fun getErrorFlow(): Flow<String?> {
+    override fun getErrorFlow(): Flow<LocationError?> {
         return _locationError.asStateFlow()
     }
     
     override fun setLocationAlarmInterval(intervalMillis: Long) {
-        if (intervalMillis >= 60000) { // 至少1分钟
-            locationService?.setLocationAlarmInterval(intervalMillis)
-            // 同时设置后台上传间隔
-            uploadService?.setBackgroundUploadInterval(intervalMillis)
-            Log.d(TAG, "设置定位唤醒和后台上传间隔为 ${intervalMillis/60000} 分钟")
+        locationService?.setLocationAlarmInterval(intervalMillis)
+        
+        // 同步到设置仓库
+        repositoryScope.launch {
+            settingsRepository.setLocationUpdateInterval(intervalMillis)
         }
     }
     
     override fun setUploadEnabled(enabled: Boolean) {
         uploadService?.setUploadEnabled(enabled)
+        
+        // 同步到设置仓库
+        repositoryScope.launch {
+            settingsRepository.setUploadEnabled(enabled)
+        }
     }
     
     override fun setUploadInterval(intervalMillis: Long) {
         uploadService?.setUploadInterval(intervalMillis)
+        
+        // 同步到设置仓库
+        repositoryScope.launch {
+            settingsRepository.setUploadInterval(intervalMillis)
+        }
     }
     
     override fun setServerUrl(url: String) {
-        if (url.isNotEmpty()) {
-            uploadService?.setServerUrl(url)
+        uploadService?.setServerUrl(url)
+        
+        // 同步到设置仓库
+        repositoryScope.launch {
+            settingsRepository.setServerUrl(url)
         }
     }
     
     override fun getServerUrl(): String {
-        return uploadService?.getServerUrl() ?: ""
+        // 从设置仓库获取最新值
+        return "" // 不再直接获取，而是通过Flow获取
     }
     
     override fun uploadCurrentLocation() {
-        uploadService?.uploadLatestLocation()
+        repositoryScope.launch {
+            val latestLocation = getCurrentLocation()
+            if (latestLocation != null) {
+                // 由于不再支持直接触发上传，所以这里不执行任何操作
+                // 上传服务会根据间隔自动上传最新位置
+                Log.d(TAG, "不再支持手动触发上传，上传服务会根据间隔自动上传")
+            }
+        }
     }
     
     override fun getUploadStatusFlow(): Flow<LocationUploadService.UploadStatus> {
@@ -316,17 +295,20 @@ class LocationRepositoryImpl @Inject constructor(
     }
     
     override fun setUserName(name: String) {
-        if (name.isNotEmpty()) {
-            uploadService?.setUserName(name)
+        uploadService?.setUserName(name)
+        
+        // 同步到设置仓库
+        repositoryScope.launch {
+            settingsRepository.setUserName(name)
         }
     }
     
     override fun getUserName(): String {
-        return uploadService?.getUserName() ?: "默认用户"
+        // 从设置仓库获取最新值
+        return "" // 不再直接获取，而是通过Flow获取
     }
     
     override fun setForegroundMode(inForeground: Boolean) {
         uploadService?.setForegroundMode(inForeground)
-        Log.d(TAG, "设置应用模式为: ${if(inForeground) "前台" else "后台"}")
     }
 } 

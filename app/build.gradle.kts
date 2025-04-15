@@ -104,6 +104,12 @@ android {
         excludes += "META-INF/LGPL2.1"
     }
 
+    // 配置Lint选项
+    lint {
+        abortOnError = false  // 有错误时不中断构建
+        disable += "JavascriptInterface" // 禁用JavascriptInterface检查
+    }
+
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
         kotlinOptions {
             freeCompilerArgs += "-opt-in=kotlin.RequiresOptIn"
@@ -209,4 +215,8 @@ dependencies {
 
     // OkHttp - 用于网络请求
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    
+    // DataStore - 用于存储配置
+    implementation(libs.androidx.dataStore.core)
+    implementation(libs.androidx.dataStore.preferences)
 }

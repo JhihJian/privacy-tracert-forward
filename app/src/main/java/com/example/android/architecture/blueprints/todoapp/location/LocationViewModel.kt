@@ -97,13 +97,19 @@ class LocationViewModel @Inject constructor(
         viewModelScope.launch {
             locationRepository.getErrorFlow().collect { error ->
                 if (error != null) {
-                    _uiState.update { 
-                        it.copy(
-                            error = error,
-                            isLoading = false,
-                            message = "定位错误: $error"
-                        )
+                    // 根据不同类型的错误设置不同的错误消息
+                    val errorMessage = when (error) {
+                        is LocationError.PermissionDenied -> "位置权限被拒绝，请在设置中开启"
+                        is LocationError.GpsDisabled -> "GPS已关闭，请开启GPS以获取准确位置"
+                        is LocationError.ServiceBindFailed -> "位置服务绑定失败，请重启应用"
+                        is LocationError.LocationFailed -> "定位失败: ${error.message} (错误码: ${error.code})"
+                        is LocationError.NetworkError -> "网络错误: ${error.message}"
+                        is LocationError.ServerError -> "服务器错误: ${error.message} (状态码: ${error.code})"
+                        is LocationError.UnknownError -> "未知错误: ${error.message}"
                     }
+                    _uiState.update { it.copy(error = errorMessage) }
+                } else {
+                    _uiState.update { it.copy(error = null) }
                 }
             }
         }

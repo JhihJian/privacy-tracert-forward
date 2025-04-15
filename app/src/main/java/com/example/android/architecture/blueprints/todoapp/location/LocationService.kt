@@ -75,11 +75,15 @@ class LocationService : Service() {
     // 定位选项
     private var locationOption: AMapLocationClientOption? = null
     
-    // 位置数据流
-    private val _locationFlow = MutableStateFlow<AMapLocation?>(null)
+    // 位置数据流 - 移除原始AMapLocation流，只保留LocationData流
     private val _locationDataFlow = MutableStateFlow<LocationData?>(null)
-    val locationFlow: StateFlow<AMapLocation?> = _locationFlow.asStateFlow()
+    
+    // 公开的位置数据流，用于其他服务订阅
     val locationDataFlow: StateFlow<LocationData?> = _locationDataFlow.asStateFlow()
+    
+    // 错误信息流
+    private val _errorFlow = MutableStateFlow<LocationError?>(null)
+    val errorFlow: StateFlow<LocationError?> = _errorFlow.asStateFlow()
     
     // 绑定服务的Binder
     private val binder = LocationBinder()
@@ -96,7 +100,7 @@ class LocationService : Service() {
     // 定位状态
     private var isLocationEnabled = false
     
-    // 位置更新广播接收器
+    // 位置更新广播接收器 - 仍然保留，但只用于接收alarm服务的唤醒信号
     private val locationAlarmReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_LOCATION_ALARM) {
@@ -111,10 +115,7 @@ class LocationService : Service() {
     private val locationListener = AMapLocationListener { location ->
         try {
             if (location.errorCode == 0) {
-                // 定位成功
-                _locationFlow.update { location }
-                
-                // 转换为LocationData并更新
+                // 定位成功，转换为LocationData并更新
                 val locationData = convertToLocationData(location)
                 _locationDataFlow.update { locationData }
                 
@@ -127,15 +128,26 @@ class LocationService : Service() {
                     "当前坐标: ${location.latitude.formatCoordinate()}°N, ${location.longitude.formatCoordinate()}°E"
                 }
                 updateNotification(locationText)
+                
+                // 位置更新成功后释放WakeLock
+                releaseWakeLock()
             } else {
                 // 定位失败
                 Log.e(TAG, "定位失败: ${location.errorCode}, ${location.errorInfo}, 当前位置: ${location.latitude},${location.longitude}")
                 
+                // 更新错误状态
+                _errorFlow.update { LocationError.LocationFailed(location.errorCode, location.errorInfo ?: "未知错误") }
+                
                 // 更新通知，显示定位失败信息
                 updateNotification("定位失败，正在重试...")
+                
+                // 定位失败后释放WakeLock
+                releaseWakeLock()
             }
         } catch (e: Exception) {
             Log.e(TAG, "处理定位结果时发生异常", e)
+            _errorFlow.update { LocationError.UnknownError("处理定位结果时发生未知异常: ${e.message}") }
+            releaseWakeLock()
         }
     }
     
@@ -182,6 +194,7 @@ class LocationService : Service() {
             Log.d(TAG, "前台服务启动成功")
         } catch (e: Exception) {
             Log.e(TAG, "启动前台服务失败", e)
+            _errorFlow.update { LocationError.UnknownError("启动前台服务失败: ${e.message}") }
             // 如果启动前台服务失败，尝试停止服务
             stopSelf()
             return
@@ -198,6 +211,7 @@ class LocationService : Service() {
             Log.d(TAG, "广播接收器注册成功")
         } catch (e: Exception) {
             Log.e(TAG, "注册广播接收器失败", e)
+            _errorFlow.update { LocationError.UnknownError("注册广播接收器失败: ${e.message}") }
         }
         
         // 初始化WakeLock
@@ -379,6 +393,7 @@ class LocationService : Service() {
             val networkInfo = connectivityManager.activeNetworkInfo
             if (networkInfo == null || !networkInfo.isConnected) {
                 Log.e(TAG, "网络未连接，无法初始化定位服务")
+                _errorFlow.update { LocationError.NetworkError("网络未连接") }
                 return
             }
             
@@ -401,6 +416,7 @@ class LocationService : Service() {
             Log.d(TAG, "高德地图定位客户端初始化成功")
         } catch (e: Exception) {
             Log.e(TAG, "初始化高德地图定位客户端失败", e)
+            _errorFlow.update { LocationError.UnknownError("初始化定位客户端失败: ${e.message}") }
             // 尝试重新初始化
             Handler(mainLooper).postDelayed({
                 initLocationClient()
@@ -425,6 +441,7 @@ class LocationService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "启动定位失败", e)
+            _errorFlow.update { LocationError.UnknownError("启动定位失败: ${e.message}") }
         }
     }
     
@@ -445,6 +462,7 @@ class LocationService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "停止定位失败", e)
+            _errorFlow.update { LocationError.UnknownError("停止定位失败: ${e.message}") }
         }
     }
     
@@ -478,9 +496,11 @@ class LocationService : Service() {
             
             if (!isGpsEnabled && !isNetworkEnabled) {
                 Log.e(TAG, "GPS和网络定位都未开启，定位功能可能无法正常工作")
+                _errorFlow.update { LocationError.GpsDisabled }
             }
         } catch (e: Exception) {
             Log.e(TAG, "检查GPS状态失败", e)
+            _errorFlow.update { LocationError.UnknownError("检查GPS状态失败: ${e.message}") }
         }
     }
     
@@ -552,6 +572,7 @@ class LocationService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "获取WakeLock失败", e)
+            _errorFlow.update { LocationError.UnknownError("获取WakeLock失败: ${e.message}") }
         }
     }
     
@@ -566,6 +587,7 @@ class LocationService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "释放WakeLock失败", e)
+            _errorFlow.update { LocationError.UnknownError("释放WakeLock失败: ${e.message}") }
         }
     }
     
@@ -589,14 +611,9 @@ class LocationService : Service() {
             // 开始定位
             locationClient?.startLocation()
             
-            // 确保数据上传 - 等待2秒让定位完成，然后强制触发一次上传
-            Handler().postDelayed({
-                // 释放WakeLock
-                releaseWakeLock()
-            }, 2000)
-            
         } catch (e: Exception) {
             Log.e(TAG, "执行定位更新失败", e)
+            _errorFlow.update { LocationError.UnknownError("执行定位更新失败: ${e.message}") }
             releaseWakeLock()
         }
     }
@@ -611,6 +628,7 @@ class LocationService : Service() {
             alarmService?.setLocationAlarmInterval(intervalMillis) ?: false
         } else {
             Log.e(TAG, "设置定位间隔失败：AlarmService未连接")
+            _errorFlow.update { LocationError.UnknownError("设置定位间隔失败：AlarmService未连接") }
             false
         }
     }
@@ -653,46 +671,5 @@ class LocationService : Service() {
      */
     fun getLastLocation(): LocationData? {
         return locationDataFlow.value
-    }
-    
-    /**
-     * 请求一次性定位
-     * 适用于地图场景下的快速定位
-     */
-    fun requestLocationOnce() {
-        // 如果正在定位，直接返回
-        if (isLocationEnabled) {
-            return
-        }
-        
-        try {
-            // 创建定位请求
-            val locationClientOption = AMapLocationClientOption()
-            // 设置定位模式为高精度模式
-            locationClientOption.locationMode = AMapLocationClientOption.AMapLocationMode.Hight_Accuracy
-            // 设置为单次定位
-            locationClientOption.isOnceLocation = true
-            // 设置定位超时时间
-            locationClientOption.httpTimeOut = 20000
-            
-            // 设置定位参数
-            locationClient?.setLocationOption(locationClientOption)
-            
-            // 启动定位
-            locationClient?.startLocation()
-            
-            // 记录状态
-            isLocationEnabled = true
-            
-            // 5秒后自动停止定位（避免资源浪费）
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (locationClient != null && isLocationEnabled) {
-                    locationClient?.stopLocation()
-                    isLocationEnabled = false
-                }
-            }, 5000)
-        } catch (e: Exception) {
-            Log.e(TAG, "请求一次性定位失败", e)
-        }
     }
 }

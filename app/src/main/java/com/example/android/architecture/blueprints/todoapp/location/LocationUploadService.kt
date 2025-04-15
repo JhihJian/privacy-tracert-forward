@@ -24,7 +24,6 @@ import android.content.ServiceConnection
 import android.os.Binder
 import android.os.IBinder
 import android.util.Log
-import com.amap.api.location.AMapLocation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,9 +39,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Job
 import android.content.pm.PackageManager
-import android.os.Build
-import androidx.annotation.RequiresApi
-import android.content.IntentFilter
+import javax.inject.Inject
 
 /**
  * 位置上传服务，负责将位置数据上传到指定服务器
@@ -61,20 +58,17 @@ class LocationUploadService : Service() {
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
     
-    // 服务端API地址
-    private var serverUrl = ""
-    
-    // 用户名信息
-    private var userName = "默认用户"
-    
-    // 是否启用位置上传
-    private var isUploadEnabled = true
+    // 设置仓库
+    private var settingsRepository: SettingsRepository? = null
     
     // 位置服务
     private var locationService: LocationService? = null
     
     // 位置数据收集任务
     private var locationCollectionJob: Job? = null
+    
+    // 设置收集任务
+    private var settingsCollectionJob: Job? = null
     
     // 上传状态
     private val _uploadStatus = MutableStateFlow<UploadStatus>(UploadStatus.Idle)
@@ -83,14 +77,13 @@ class LocationUploadService : Service() {
     // 上次上传时间
     private var lastUploadTime = 0L
     
-    // 上传间隔（毫秒）
+    // 配置参数
+    private var isUploadEnabled = true
     private var uploadInterval = 5000L // 默认5秒
-    
-    // 后台模式上传间隔（毫秒）
     private var backgroundUploadInterval = 3 * 60 * 1000L // 默认3分钟
-    
-    // 前台模式标志
     private var isInForeground = true
+    private var serverUrl = ""
+    private var userName = "默认用户"
     
     // 绑定位置服务的连接
     private val locationServiceConnection = object : ServiceConnection {
@@ -110,53 +103,21 @@ class LocationUploadService : Service() {
     // 暴露给客户端的Binder
     private val binder = UploadBinder()
     
-    // 位置更新广播接收器
-    private val locationUpdateReceiver = object : android.content.BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.example.android.architecture.blueprints.todoapp.LOCATION_UPDATED") {
-                Log.d(TAG, "收到位置更新广播 (${if(isInForeground) "前台" else "后台"}模式)")
-                
-                // 当位置更新时，检查是否该上传
-                if (isUploadEnabled) {
-                    val currentTime = System.currentTimeMillis()
-                    val interval = getCurrentUploadInterval()
-                    
-                    // 后台模式时，强制触发一次上传
-                    if (!isInForeground || currentTime - lastUploadTime >= interval) {
-                        Log.d(TAG, "触发位置上传 (间隔: ${(currentTime - lastUploadTime)/1000}秒)")
-                        uploadLatestLocation()
-                        lastUploadTime = currentTime
-                    } else {
-                        Log.d(TAG, "跳过位置上传：间隔过短 (${(currentTime - lastUploadTime)/1000}秒 < ${interval/1000}秒)")
-                    }
-                }
-            }
-        }
-    }
-    
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "位置上传服务已创建")
         
-        // 从AndroidManifest.xml读取服务器URL
-        readServerUrlFromManifest()
-        
-        // 注册位置更新广播接收器
+        // 尝试获取SettingsRepository（如果有DI配置）
         try {
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                Context.RECEIVER_NOT_EXPORTED
+            settingsRepository = (application as? SettingsProvider)?.provideSettingsRepository()
+            if (settingsRepository != null) {
+                Log.d(TAG, "成功获取SettingsRepository")
+                startCollectingSettings()
             } else {
-                0
+                Log.w(TAG, "无法获取SettingsRepository，将使用默认配置")
             }
-            registerReceiver(
-                locationUpdateReceiver, 
-                IntentFilter("com.example.android.architecture.blueprints.todoapp.LOCATION_UPDATED"),
-                flags
-            )
-            Log.d(TAG, "位置更新广播接收器注册成功")
         } catch (e: Exception) {
-            Log.e(TAG, "注册位置更新广播接收器失败", e)
+            Log.e(TAG, "获取SettingsRepository时出错", e)
         }
         
         // 绑定位置服务
@@ -175,13 +136,7 @@ class LocationUploadService : Service() {
     
     override fun onDestroy() {
         stopCollectingLocation()
-        
-        // 注销位置更新广播接收器
-        try {
-            unregisterReceiver(locationUpdateReceiver)
-        } catch (e: Exception) {
-            Log.e(TAG, "注销位置更新广播接收器失败", e)
-        }
+        stopCollectingSettings()
         
         // 解绑位置服务
         try {
@@ -200,18 +155,68 @@ class LocationUploadService : Service() {
     private fun startCollectingLocation() {
         locationCollectionJob?.cancel()
         locationCollectionJob = serviceScope.launch {
-            locationService?.locationFlow?.collect { location ->
-                if (location != null && isUploadEnabled) {
+            locationService?.locationDataFlow?.collect { locationData ->
+                if (locationData != null && isUploadEnabled) {
                     val currentTime = System.currentTimeMillis()
                     // 检查是否达到上传间隔
                     if (currentTime - lastUploadTime >= getCurrentUploadInterval()) {
-                        uploadLocation(location)
+                        uploadLocationData(locationData)
                         lastUploadTime = currentTime
                     }
                 }
             }
         }
         Log.d(TAG, "开始收集位置数据")
+    }
+    
+    /**
+     * 开始收集设置数据
+     */
+    private fun startCollectingSettings() {
+        settingsCollectionJob?.cancel()
+        settingsRepository?.let { repo ->
+            settingsCollectionJob = serviceScope.launch {
+                // 收集服务器URL
+                launch {
+                    repo.getServerUrl().collect { url ->
+                        serverUrl = url
+                        Log.d(TAG, "服务器URL已更新: $url")
+                    }
+                }
+                
+                // 收集用户名
+                launch {
+                    repo.getUserName().collect { name ->
+                        userName = name
+                        Log.d(TAG, "用户名已更新: $name")
+                    }
+                }
+                
+                // 收集上传状态
+                launch {
+                    repo.isUploadEnabled().collect { enabled ->
+                        isUploadEnabled = enabled
+                        Log.d(TAG, "上传状态已更新: ${if (enabled) "启用" else "禁用"}")
+                    }
+                }
+                
+                // 收集前台上传间隔
+                launch {
+                    repo.getUploadInterval().collect { interval ->
+                        uploadInterval = interval
+                        Log.d(TAG, "前台上传间隔已更新: $interval ms")
+                    }
+                }
+                
+                // 收集后台上传间隔
+                launch {
+                    repo.getBackgroundUploadInterval().collect { interval ->
+                        backgroundUploadInterval = interval
+                        Log.d(TAG, "后台上传间隔已更新: $interval ms")
+                    }
+                }
+            }
+        }
     }
     
     /**
@@ -224,11 +229,46 @@ class LocationUploadService : Service() {
     }
     
     /**
+     * 停止收集设置数据
+     */
+    private fun stopCollectingSettings() {
+        settingsCollectionJob?.cancel()
+        settingsCollectionJob = null
+        Log.d(TAG, "停止收集设置数据")
+    }
+    
+    /**
+     * 获取当前上传间隔（根据前台/后台状态）
+     */
+    private fun getCurrentUploadInterval(): Long {
+        return if (isInForeground) uploadInterval else backgroundUploadInterval
+    }
+    
+    /**
+     * 设置应用是否在前台运行
+     */
+    fun setForegroundMode(inForeground: Boolean) {
+        this.isInForeground = inForeground
+        Log.d(TAG, "应用前台状态已更新: ${if (inForeground) "前台" else "后台"}")
+    }
+    
+    /**
      * 设置是否启用上传
      */
     fun setUploadEnabled(enabled: Boolean) {
         isUploadEnabled = enabled
         Log.d(TAG, "位置上传功能已${if (enabled) "启用" else "禁用"}")
+        
+        // 同步到设置仓库
+        settingsRepository?.let { repo ->
+            serviceScope.launch {
+                try {
+                    repo.setUploadEnabled(enabled)
+                } catch (e: Exception) {
+                    Log.e(TAG, "保存上传状态到设置仓库失败", e)
+                }
+            }
+        }
     }
     
     /**
@@ -237,6 +277,17 @@ class LocationUploadService : Service() {
     fun setUploadInterval(intervalMillis: Long) {
         uploadInterval = intervalMillis
         Log.d(TAG, "位置上传间隔已设置为 $intervalMillis 毫秒（前台模式）")
+        
+        // 同步到设置仓库
+        settingsRepository?.let { repo ->
+            serviceScope.launch {
+                try {
+                    repo.setUploadInterval(intervalMillis)
+                } catch (e: Exception) {
+                    Log.e(TAG, "保存上传间隔到设置仓库失败", e)
+                }
+            }
+        }
     }
     
     /**
@@ -245,35 +296,35 @@ class LocationUploadService : Service() {
     fun setBackgroundUploadInterval(intervalMillis: Long) {
         backgroundUploadInterval = intervalMillis
         Log.d(TAG, "后台位置上传间隔已设置为 $intervalMillis 毫秒")
-    }
-    
-    /**
-     * 设置应用是否在前台运行
-     */
-    fun setForegroundMode(inForeground: Boolean) {
-        if (this.isInForeground != inForeground) {
-            this.isInForeground = inForeground
-            Log.d(TAG, "应用模式切换为: ${if(inForeground) "前台" else "后台"}")
-            
-            // 应用状态改变时，触发一次上传
-            uploadLatestLocation()
+        
+        // 同步到设置仓库
+        settingsRepository?.let { repo ->
+            serviceScope.launch {
+                try {
+                    repo.setBackgroundUploadInterval(intervalMillis)
+                } catch (e: Exception) {
+                    Log.e(TAG, "保存后台上传间隔到设置仓库失败", e)
+                }
+            }
         }
-    }
-    
-    /**
-     * 获取当前应该使用的上传间隔
-     */
-    private fun getCurrentUploadInterval(): Long {
-        return if (isInForeground) uploadInterval else backgroundUploadInterval
     }
     
     /**
      * 设置服务器URL
      */
     fun setServerUrl(url: String) {
-        if (url.isNotEmpty()) {
-            serverUrl = url
-            Log.d(TAG, "服务器URL已更改: $url")
+        serverUrl = url
+        Log.d(TAG, "服务器URL已设置为: $url")
+        
+        // 同步到设置仓库
+        settingsRepository?.let { repo ->
+            serviceScope.launch {
+                try {
+                    repo.setServerUrl(url)
+                } catch (e: Exception) {
+                    Log.e(TAG, "保存服务器URL到设置仓库失败", e)
+                }
+            }
         }
     }
     
@@ -281,42 +332,25 @@ class LocationUploadService : Service() {
      * 设置用户名
      */
     fun setUserName(name: String) {
-        if (name.isNotEmpty()) {
-            userName = name
-            Log.d(TAG, "用户名已设置: $name")
+        userName = name
+        Log.d(TAG, "用户名已设置为: $name")
+        
+        // 同步到设置仓库
+        settingsRepository?.let { repo ->
+            serviceScope.launch {
+                try {
+                    repo.setUserName(name)
+                } catch (e: Exception) {
+                    Log.e(TAG, "保存用户名到设置仓库失败", e)
+                }
+            }
         }
     }
     
     /**
-     * 获取当前服务器URL
+     * 上传位置数据
      */
-    fun getServerUrl(): String {
-        return serverUrl
-    }
-    
-    /**
-     * 获取当前用户名
-     */
-    fun getUserName(): String {
-        return userName
-    }
-    
-    /**
-     * 手动上传最新位置
-     */
-    fun uploadLatestLocation() {
-        locationService?.locationFlow?.value?.let { location ->
-            uploadLocation(location)
-        } ?: run {
-            Log.e(TAG, "无可用的位置数据")
-            _uploadStatus.update { UploadStatus.Error("无可用的位置数据") }
-        }
-    }
-    
-    /**
-     * 上传位置数据到服务器
-     */
-    private fun uploadLocation(location: AMapLocation) {
+    private fun uploadLocationData(locationData: LocationData) {
         serviceScope.launch {
             try {
                 // 检查URL是否有效
@@ -329,7 +363,7 @@ class LocationUploadService : Service() {
                 _uploadStatus.update { UploadStatus.Uploading }
                 
                 // 格式化位置数据为JSON
-                val jsonData = formatLocationToJson(location)
+                val jsonData = formatLocationToJson(locationData)
                 
                 // 创建请求体
                 val mediaType = "application/json; charset=utf-8".toMediaType()
@@ -362,37 +396,37 @@ class LocationUploadService : Service() {
     /**
      * 格式化位置数据为JSON字符串
      */
-    private fun formatLocationToJson(location: AMapLocation): String {
+    private fun formatLocationToJson(locationData: LocationData): String {
         return try {
             val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-            val formattedDate = dateFormat.format(java.util.Date(location.time))
+            val formattedDate = dateFormat.format(java.util.Date(locationData.time))
             
             """
             {
               "timestamp": "${formattedDate}",
-              "latitude": ${location.latitude},
-              "longitude": ${location.longitude},
-              "accuracy": ${location.accuracy},
-              "address": "${location.address ?: ""}",
-              "country": "${location.country ?: ""}",
-              "province": "${location.province ?: ""}",
-              "city": "${location.city ?: ""}",
-              "district": "${location.district ?: ""}",
-              "street": "${location.street ?: ""}",
-              "streetNum": "${location.streetNum ?: ""}",
-              "cityCode": "${location.cityCode ?: ""}",
-              "adCode": "${location.adCode ?: ""}",
-              "poiName": "${location.poiName ?: ""}",
-              "aoiName": "${location.aoiName ?: ""}",
-              "buildingId": "${location.buildingId ?: ""}",
-              "floor": "${location.floor ?: ""}",
-              "gpsAccuracyStatus": ${location.gpsAccuracyStatus},
-              "locationType": ${location.locationType},
-              "speed": ${location.speed},
-              "bearing": ${location.bearing},
-              "altitude": ${location.altitude},
-              "errorCode": ${location.errorCode},
-              "errorInfo": "${location.errorInfo ?: ""}",
+              "latitude": ${locationData.latitude},
+              "longitude": ${locationData.longitude},
+              "accuracy": ${locationData.accuracy},
+              "address": "${locationData.address}",
+              "country": "${locationData.country}",
+              "province": "${locationData.province}",
+              "city": "${locationData.city}",
+              "district": "${locationData.district}",
+              "street": "${locationData.street}",
+              "streetNum": "${locationData.streetNum}",
+              "cityCode": "${locationData.cityCode}",
+              "adCode": "${locationData.adCode}",
+              "poiName": "${locationData.poiName}",
+              "aoiName": "${locationData.aoiName}",
+              "buildingId": "${locationData.buildingId}",
+              "floor": "${locationData.floor}",
+              "gpsAccuracyStatus": ${locationData.gpsAccuracyStatus},
+              "locationType": ${locationData.locationType},
+              "speed": ${locationData.speed},
+              "bearing": ${locationData.bearing},
+              "altitude": ${locationData.altitude},
+              "errorCode": ${locationData.errorCode},
+              "errorInfo": "${locationData.errorInfo}",
               "userName": "${userName}"
             }
             """.trimIndent()
@@ -420,29 +454,9 @@ class LocationUploadService : Service() {
     }
     
     /**
-     * 从AndroidManifest.xml读取服务器URL
+     * 用于应用提供Settings仓库的接口
      */
-    private fun readServerUrlFromManifest() {
-        try {
-            val appInfo = packageManager.getApplicationInfo(
-                packageName, 
-                PackageManager.GET_META_DATA
-            )
-            
-            val metaData = appInfo.metaData
-            if (metaData != null && metaData.containsKey("com.example.location.server.url")) {
-                val url = metaData.getString("com.example.location.server.url")
-                if (!url.isNullOrEmpty()) {
-                    serverUrl = url
-                    Log.i(TAG, "从Manifest读取到服务器URL: $serverUrl")
-                } else {
-                    Log.e(TAG, "未从Manifest读取到有效的服务器URL")
-                }
-            } else {
-                Log.e(TAG, "Manifest中未找到服务器URL配置")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "读取Manifest中的服务器URL失败", e)
-        }
+    interface SettingsProvider {
+        fun provideSettingsRepository(): SettingsRepository
     }
 } 

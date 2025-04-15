@@ -61,12 +61,12 @@ interface LocationRepository {
     /**
      * 获取定位服务错误信息
      */
-    fun getLocationError(): String?
+    fun getLocationError(): LocationError?
     
     /**
      * 获取错误信息流
      */
-    fun getErrorFlow(): Flow<String?>
+    fun getErrorFlow(): Flow<LocationError?>
     
     /**
      * 设置定位唤醒间隔
