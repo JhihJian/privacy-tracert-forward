@@ -85,6 +85,11 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import androidx.compose.material3.Slider
+import com.example.android.architecture.blueprints.todoapp.location.utils.LocationPermissionManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.compose.ui.platform.LocalLifecycleOwner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -159,56 +164,13 @@ private fun LocationContent(
 ) {
     val context = LocalContext.current
     
-    // 定位权限请求 - 仅保留必要的位置权限
-    val permissions = arrayOf(
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION,
-        Manifest.permission.FOREGROUND_SERVICE_LOCATION
-    )
-    
-    // 记录权限状态
-    var permissionsRequested by remember { mutableStateOf(false) }
-    
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissionsMap ->
-        val allGranted = permissionsMap.values.all { it }
-        Log.d("LocationScreen", "权限请求结果: $permissionsMap, 全部授予: $allGranted")
-        onPermissionResult(allGranted)
-        
-        if (!allGranted) {
-            // 显示指导用户如何手动开启权限的提示
-            val message = "需要位置权限才能获取位置信息。请在设置中手动开启位置权限"
-            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-        }
-    }
-    
-    // 检查并请求权限
-    LaunchedEffect(key1 = Unit) {
-        val hasPermissions = permissions.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-        }
-        
-        Log.d("LocationScreen", "当前权限状态: $hasPermissions, 是否已请求过: $permissionsRequested")
-        
-        if (hasPermissions) {
-            // 已有权限，通知ViewModel
-            onPermissionResult(true)
-        } else if (!permissionsRequested) {
-            // 没有权限且未请求过，发起请求
-            permissionsRequested = true
-            permissionLauncher.launch(permissions)
-        }
-    }
-    
-    // 添加一个显式的权限请求按钮
-    DisposableEffect(key1 = Unit) {
-        // 首次进入界面时，请求权限
-        if (!permissionsRequested) {
-            permissionsRequested = true
-            permissionLauncher.launch(permissions)
-        }
-        onDispose { }
+    // 使用remember确保权限管理器只初始化一次
+    val currentActivity = LocalContext.current as androidx.activity.ComponentActivity
+    val permissionManagerRemembered = remember(currentActivity) {
+        // 在Compose的remember块中创建权限管理器
+        viewModel.setupPermissionManager(currentActivity, onPermissionResult)
+        // 返回一个标记，表示已初始化
+        true
     }
     
     Surface(
@@ -356,11 +318,7 @@ private fun LocationContent(
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 // 检查是否具有位置权限，并提供请求按钮
-                val hasLocationPermissions = permissions.all {
-                    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-                }
-                
-                if (!hasLocationPermissions) {
+                if (!uiState.isPermissionGranted) {
                     Text(
                         text = "请授予位置权限以使用实时定位功能",
                         style = MaterialTheme.typography.bodyMedium,
@@ -368,20 +326,6 @@ private fun LocationContent(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
-                    
-                    Button(
-                        onClick = { 
-                            permissionLauncher.launch(permissions)
-                        },
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    ) {
-                        Icon(
-                            Icons.Filled.LocationOn,
-                            contentDescription = null,
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                        Text("请求位置权限")
-                    }
                     
                     // 添加打开应用设置的按钮
                     Button(
@@ -395,13 +339,28 @@ private fun LocationContent(
                                 intent.addCategory(android.content.Intent.CATEGORY_DEFAULT)
                                 intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                                 context.startActivity(intent)
+                                
+                                // 提示用户操作
+                                Toast.makeText(
+                                    context, 
+                                    "请在设置中开启位置权限，然后返回应用", 
+                                    Toast.LENGTH_LONG
+                                ).show()
                             } catch (e: Exception) {
                                 Toast.makeText(context, "无法打开应用设置", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
                     ) {
-                        Text("打开应用设置")
+                        Icon(
+                            Icons.Filled.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text("打开应用设置开启权限")
                     }
                 } else if (!uiState.isServiceBound) {
                     CircularProgressIndicator(
@@ -414,6 +373,23 @@ private fun LocationContent(
                     )
                 }
             }
+        }
+    }
+    
+    // 添加生命周期观察，用于在从设置返回时刷新权限状态
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(key1 = lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                // 在应用恢复时，刷新权限状态
+                viewModel.refreshPermissionStatus(currentActivity)
+            }
+        }
+        
+        lifecycleOwner.lifecycle.addObserver(observer)
+        
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 }

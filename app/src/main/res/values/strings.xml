@@ -69,4 +69,12 @@
     <string name="tasks_header_image_content_description">Tasks header image</string>
     <string name="no_tasks_image_content_description">No tasks image</string>
 
+    <!-- 权限相关 -->
+    <string name="location_permission_title">需要位置权限</string>
+    <string name="location_permission_message">该应用需要位置权限才能获取您的位置信息。请在设置中开启位置权限。</string>
+    <string name="background_location_permission_title">需要后台位置权限</string>
+    <string name="background_location_permission_message">为了在应用处于后台时持续获取位置信息，请在设置中允许"始终允许"的位置权限。</string>
+    <string name="settings">设置</string>
+    <string name="cancel">取消</string>
+
 </resources>

@@ -1,8 +1,10 @@
 package com.example.android.architecture.blueprints.todoapp.location
 
 import android.util.Log
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.android.architecture.blueprints.todoapp.location.utils.LocationPermissionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +42,8 @@ class LocationViewModel @Inject constructor(
     // UI状态
     private val _uiState = MutableStateFlow(LocationUiState())
     val uiState: StateFlow<LocationUiState> = _uiState.asStateFlow()
+    
+    private var locationPermissionManager: LocationPermissionManager? = null
     
     init {
         // 订阅位置更新
@@ -360,5 +364,60 @@ class LocationViewModel @Inject constructor(
     fun setForegroundMode(inForeground: Boolean) {
         locationRepository.setForegroundMode(inForeground)
         Log.d(TAG, "设置应用模式为: ${if(inForeground) "前台" else "后台"}")
+    }
+    
+    /**
+     * 设置权限管理器
+     */
+    fun setupPermissionManager(activity: ComponentActivity, onPermissionResult: (Boolean) -> Unit) {
+        if (locationPermissionManager != null) {
+            return // 已经初始化，不重复操作
+        }
+        
+        try {
+            locationPermissionManager = LocationPermissionManager.setup(
+                activity = activity,
+                needBackgroundPermission = false,
+                onPermissionGranted = {
+                    // 权限授予后的回调
+                    Log.d(TAG, "位置权限已授予")
+                    updatePermissionStatus(true)
+                    onPermissionResult(true)
+                },
+                onPermissionDenied = {
+                    // 权限拒绝后的回调
+                    Log.d(TAG, "位置权限被拒绝")
+                    updatePermissionStatus(false)
+                    onPermissionResult(false)
+                }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "设置权限管理器时出错", e)
+            updatePermissionStatus(false)
+            onPermissionResult(false)
+        }
+    }
+    
+    /**
+     * 刷新权限状态
+     * 在应用从设置页面返回时调用
+     */
+    fun refreshPermissionStatus(activity: ComponentActivity) {
+        try {
+            // 手动检查位置权限
+            val hasPermission = com.example.android.architecture.blueprints.todoapp.location.utils.PermissionUtils.hasBasicLocationPermissions(activity)
+            
+            Log.d(TAG, "刷新权限状态: hasPermission=$hasPermission")
+            
+            // 更新权限状态
+            updatePermissionStatus(hasPermission)
+            
+            // 如果现在有权限且服务已绑定，尝试开始定位
+            if (hasPermission && _uiState.value.isServiceBound) {
+                startLocation()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "刷新权限状态时出错", e)
+        }
     }
 } 

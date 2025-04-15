@@ -46,6 +46,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.android.architecture.blueprints.todoapp.location.utils.LocationPermissionManager
 import com.example.android.architecture.blueprints.todoapp.location.webview.AMapHelper
 import com.example.android.architecture.blueprints.todoapp.location.webview.MyWebView
 import com.example.android.architecture.blueprints.todoapp.location.webview.MapProxy
@@ -68,41 +69,13 @@ fun CheckinScreen(
     // 地图控制器
     val mapHelper = remember { AMapHelper(context) }
     
-    // 检查位置权限
-    val permissions = arrayOf(
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION
-    )
-    
-    var permissionsRequested by remember { mutableStateOf(false) }
-    
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissionsMap ->
-        val allGranted = permissionsMap.values.all { it }
-        Log.d("CheckinScreen", "权限请求结果: $permissionsMap, 全部授予: $allGranted")
-        viewModel.updatePermissionStatus(allGranted)
-        
-        if (!allGranted) {
-            // 显示权限提示
-            coroutineScope.launch {
-                snackbarHostState.showSnackbar("需要位置权限才能获取位置信息")
-            }
-        }
-    }
-    
-    // 检查权限状态
-    LaunchedEffect(key1 = Unit) {
-        val hasPermissions = permissions.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-        }
-        
-        if (hasPermissions) {
-            viewModel.updatePermissionStatus(true)
-        } else if (!permissionsRequested) {
-            permissionsRequested = true
-            permissionLauncher.launch(permissions)
-        }
+    // 使用remember确保权限管理器只初始化一次
+    val currentActivity = LocalContext.current as androidx.activity.ComponentActivity
+    val permissionManagerRemembered = remember(currentActivity) {
+        // 在Compose的remember块中创建权限管理器
+        viewModel.setupPermissionManager(currentActivity)
+        // 返回一个标记，表示已初始化
+        true
     }
     
     // 处理错误信息
@@ -130,12 +103,16 @@ fun CheckinScreen(
         }
     }
     
-    // 监听生命周期
+    // 监听生命周期，从设置页面返回时刷新权限状态
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(key1 = lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> mapHelper.onResume()
+                Lifecycle.Event.ON_RESUME -> {
+                    // 在应用恢复时，刷新权限状态
+                    viewModel.refreshPermissionStatus(currentActivity)
+                    mapHelper.onResume()
+                }
                 Lifecycle.Event.ON_PAUSE -> mapHelper.onPause()
                 Lifecycle.Event.ON_DESTROY -> mapHelper.onDestroy()
                 else -> {}
@@ -177,6 +154,38 @@ fun CheckinScreen(
                         imageVector = Icons.Default.LocationOn,
                         contentDescription = "定位",
                         tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            } else if (!uiState.isPermissionGranted) {
+                // 添加权限请求按钮
+                FloatingActionButton(
+                    onClick = {
+                        try {
+                            // 打开应用设置页面
+                            val intent = android.content.Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.parse("package:" + context.packageName)
+                            )
+                            intent.addCategory(android.content.Intent.CATEGORY_DEFAULT)
+                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                            
+                            // 提示用户操作
+                            Toast.makeText(
+                                context, 
+                                "请在设置中开启位置权限，然后返回应用", 
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "无法打开应用设置", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "开启权限",
+                        tint = MaterialTheme.colorScheme.error
                     )
                 }
             }
