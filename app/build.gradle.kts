@@ -154,7 +154,7 @@ dependencies {
     implementation(libs.accompanist.swiperefresh)
 
     // 高德地图依赖
-    implementation(files("../libs/Lite3DMap_1.3.2_AMapSearch_9.7.4_AMapLocation_6.4.9_20241226.jar"))
+    implementation(files("../libs/AMap3DMap_10.1.201_AMapSearch_9.7.4_AMapLocation_6.4.9_20250317.jar"))
 
     debugImplementation(composeBom)
     debugImplementation(libs.androidx.compose.ui.tooling.core)

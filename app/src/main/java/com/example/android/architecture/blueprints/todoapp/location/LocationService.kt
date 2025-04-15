@@ -127,9 +127,6 @@ class LocationService : Service() {
                     "当前坐标: ${location.latitude.formatCoordinate()}°N, ${location.longitude.formatCoordinate()}°E"
                 }
                 updateNotification(locationText)
-                
-                // 发送位置更新的广播，以便LocationUploadService可以接收并处理上传
-                sendLocationBroadcast()
             } else {
                 // 定位失败
                 Log.e(TAG, "定位失败: ${location.errorCode}, ${location.errorInfo}, 当前位置: ${location.latitude},${location.longitude}")
@@ -161,6 +158,7 @@ class LocationService : Service() {
         }
     }
     
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "LocationService onCreate")
@@ -593,9 +591,6 @@ class LocationService : Service() {
             
             // 确保数据上传 - 等待2秒让定位完成，然后强制触发一次上传
             Handler().postDelayed({
-                // 发送明确的位置更新广播以触发上传
-                sendLocationBroadcast()
-                
                 // 释放WakeLock
                 releaseWakeLock()
             }, 2000)
@@ -654,21 +649,6 @@ class LocationService : Service() {
     }
     
     /**
-     * 发送位置更新的广播
-     */
-    private fun sendLocationBroadcast() {
-        try {
-            val intent = Intent("com.example.android.architecture.blueprints.todoapp.LOCATION_UPDATED")
-            // 我们不直接传递AMapLocation对象，而是传递相关信息
-            intent.putExtra("isSuccessful", true)
-            sendBroadcast(intent)
-            Log.d(TAG, "已发送位置更新广播")
-        } catch (e: Exception) {
-            Log.e(TAG, "发送位置更新广播失败", e)
-        }
-    }
-    
-    /**
      * 获取最新位置数据
      */
     fun getLastLocation(): LocationData? {
@@ -716,34 +696,3 @@ class LocationService : Service() {
         }
     }
 }
-
-// 位置数据DTO，用于传递给ViewModel，不暴露高德地图API
-data class LocationData(
-    val address: String = "",
-    val latitude: Double = 0.0,
-    val longitude: Double = 0.0,
-    val accuracy: Float = 0f,
-    val time: Long = 0L,
-    // 其他必要的位置信息字段
-    val country: String = "",
-    val province: String = "",
-    val city: String = "",
-    val district: String = "",
-    val street: String = "",
-    val streetNum: String = "",
-    val cityCode: String = "",
-    val adCode: String = "",
-    val poiName: String = "",
-    val aoiName: String = "",
-    val buildingId: String = "",
-    val floor: String = "",
-    val gpsAccuracyStatus: Int = 0,
-    val locationType: Int = 0,
-    val speed: Float = 0f,
-    val bearing: Float = 0f,
-    val altitude: Double = 0.0,
-    val errorCode: Int = 0,
-    val errorInfo: String = "",
-    val coordType: String = "",
-    val locationDetail: String = ""
-) 

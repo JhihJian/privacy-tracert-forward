@@ -34,3 +34,7 @@ app/debug/output-metadata.json
 .kotlin/sessions/kotlin-compiler-6157086117405572961.salive
 .kotlin/*
 
+doc/AMap_Android_API_3DMap_Doc/*
+doc/AMap_Android_API_Search_Doc/*
+doc/AMap_Android_API_Location_Doc/*
+*.com/*
