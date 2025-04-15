@@ -46,12 +46,14 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.amap.api.maps.AMap
+import com.amap.api.maps.CameraUpdateFactory
+import com.amap.api.maps.MapView
+import com.amap.api.maps.model.LatLng
+import com.amap.api.maps.model.MarkerOptions
+import com.amap.api.maps.model.MyLocationStyle
+import com.example.android.architecture.blueprints.todoapp.location.utils.AMapHelper
 import com.example.android.architecture.blueprints.todoapp.location.utils.LocationPermissionManager
-import com.example.android.architecture.blueprints.todoapp.location.webview.AMapHelper
-import com.example.android.architecture.blueprints.todoapp.location.webview.MyWebView
-import com.example.android.architecture.blueprints.todoapp.location.webview.MapProxy
-import com.example.android.architecture.blueprints.todoapp.location.webview.MarkerOptions
-import com.example.android.architecture.blueprints.todoapp.location.webview.CameraUpdateFactory
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,7 +68,8 @@ fun CheckinScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     
-    // 地图控制器
+    // 地图相关变量
+    var mapView by remember { mutableStateOf<MapView?>(null) }
     val mapHelper = remember { AMapHelper(context) }
     
     // 使用remember确保权限管理器只初始化一次
@@ -93,12 +96,9 @@ fun CheckinScreen(
     // 监听位置变化，更新地图
     LaunchedEffect(key1 = uiState.currentLocation) {
         uiState.currentLocation?.let { location ->
-            // 如果地图已就绪且位置非空，在网页中显示位置
+            // 如果地图已就绪且位置非空，在地图上显示位置
             if (uiState.isMapReady) {
-                // 使用JavaScript在网页中显示位置
-                mapHelper.webViewRef?.let { webView ->
-                    mapHelper.showLocation(webView, location)
-                }
+                mapHelper.showLocation(location)
             }
         }
     }
@@ -202,35 +202,31 @@ fun CheckinScreen(
                     .fillMaxWidth()
                     .height(500.dp)
             ) {
-                // 使用AndroidView加载WebView
+                // 使用AndroidView加载原生地图
                 AndroidView(
                     factory = { ctx ->
-                        val webView = MyWebView(ctx).apply {
-                            // 初始化地图
-                            mapHelper.initMap(this) { mapProxy ->
-                                // 地图加载完成
+                        // 创建MapView
+                        MapView(ctx).apply {
+                            // 保存MapView实例
+                            mapView = this
+                            
+                            // 使用AMapHelper初始化地图
+                            mapHelper.initMap(this) { map ->
+                                // 地图初始化完成
                                 viewModel.updateMapReadyStatus(true)
                                 
-                                // 设置地图UI控件
-                                val uiSettings = mapProxy.getUiSettings()
-                                uiSettings.setZoomControlsEnabled(true)
-                                uiSettings.setCompassEnabled(true)
-                                uiSettings.setMyLocationButtonEnabled(true)
-                                uiSettings.setScaleControlsEnabled(true)
-                                
                                 // 设置地图点击事件
-                                mapProxy.setOnMapClickListener { latLng ->
+                                map.setOnMapClickListener { latLng ->
                                     // 在地图上点击时可以添加自定义逻辑，例如添加打卡点
                                     Log.d("CheckinScreen", "地图点击: ${latLng.latitude}, ${latLng.longitude}")
                                 }
                                 
                                 // 如果已经有位置数据，直接显示
                                 uiState.currentLocation?.let { location ->
-                                    mapHelper.showLocation(this, location)
+                                    mapHelper.showLocation(location)
                                 }
                             }
                         }
-                        webView
                     },
                     modifier = Modifier.fillMaxSize()
                 )

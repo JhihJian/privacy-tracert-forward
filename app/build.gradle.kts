@@ -41,6 +41,12 @@ android {
             }
         }
         
+        // ABI过滤，只包含有.so库的架构
+        ndk {
+            abiFilters.add("armeabi-v7a")  // 只包含32位ARM架构
+            // abiFilters.add("arm64-v8a")  // 如果将来有64位库，可以取消注释
+        }
+        
         // 从local.properties读取高德地图API Key
         val localProperties = org.jetbrains.kotlin.konan.properties.loadProperties(rootProject.file("local.properties").absolutePath)
         val defaultAmapKey = localProperties.getProperty("AMAP_API_KEY", "\"测试Key\"") // 提供一个默认值用于CI构建
@@ -103,6 +109,13 @@ android {
         excludes += "META-INF/AL2.0"
         excludes += "META-INF/LGPL2.1"
     }
+    
+    // 配置so库
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
 
     // 配置Lint选项
     lint {
@@ -161,7 +174,8 @@ dependencies {
 
     // 高德地图依赖
     implementation(files("../libs/AMap3DMap_10.1.201_AMapSearch_9.7.4_AMapLocation_6.4.9_20250317.jar"))
-
+    // 已通过jniLibs引入.so文件
+    
     debugImplementation(composeBom)
     debugImplementation(libs.androidx.compose.ui.tooling.core)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

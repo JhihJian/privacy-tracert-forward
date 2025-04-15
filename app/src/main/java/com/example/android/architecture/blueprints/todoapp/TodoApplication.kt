@@ -18,6 +18,7 @@ package com.example.android.architecture.blueprints.todoapp
 
 import android.app.Application
 import com.amap.api.location.AMapLocationClient
+import com.example.android.architecture.blueprints.todoapp.utils.NativeLibraryLoader
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import timber.log.Timber.DebugTree
@@ -32,6 +33,9 @@ class TodoApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.DEBUG) Timber.plant(DebugTree())
+        
+        // 加载本地库
+        NativeLibraryLoader.init(this)
         
         // 设置高德地图隐私政策
         AMapLocationClient.updatePrivacyShow(this, true, true)
